@@ -1,8 +1,11 @@
 import type { CannonLoad, CannonLoadGenerator } from "./CannonLoad";
 import type { ColorAmmoReserve } from "./ColorAmmoReserve";
 
-/** Slots the player picks from. Opening value, to test. */
-export const VISIBLE_LOADS = 5;
+/**
+ * Slots the player picks from: two rows of four, as laid out in the design.
+ * A gameplay value, open to balancing.
+ */
+export const VISIBLE_LOADS = 8;
 
 /**
  * The visible queue of cannons waiting to be launched.

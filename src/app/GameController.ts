@@ -20,6 +20,7 @@ import { SaveRepository } from "../persistence/SaveRepository";
 import type { CurrentLevelSave } from "../persistence/schema";
 import { SAVE_SCHEMA_VERSION } from "../persistence/schema";
 import { PixelTextureRenderer } from "../rendering/PixelTextureRenderer";
+import { Viewport, type ScreenRect } from "../rendering/Viewport";
 import { ProjectileRenderer } from "../rendering/ProjectileRenderer";
 import {
   DESKTOP_BUDGET,
@@ -45,6 +46,11 @@ export interface OfflineReport {
 export interface GameEvents {
   onPhase?: (phase: GamePhase) => void;
   onProgress?: (progress: ImageProgress) => void;
+  /**
+   * The level is built but not running: the player gets to see what their
+   * image became before choosing to start.
+   */
+  onLevelPrepared?: (palette: PaletteEntry[], colorId: Uint8Array, width: number) => void;
   onLevelReady?: (world: PixelWorld) => void;
   onMilestone?: (milestone: Milestone) => void;
   onOfflineReport?: (report: OfflineReport) => void;
@@ -53,8 +59,6 @@ export interface GameEvents {
 
 const PROFILE_ID = "local";
 const AUTOSAVE_INTERVAL_MS = 10_000;
-/** Keeps the board clear of the HUD panel; mirrors #hud in styles.css. */
-const HUD_WIDTH = 352;
 
 /**
  * Owns the whole session: import, run, autosave, offline catch-up.
@@ -66,6 +70,7 @@ export class GameController {
   readonly app: Application;
   readonly boardLayer = new Container();
   readonly profiler = new Profiler();
+  readonly viewport = new Viewport();
 
   private readonly imageClient = new ImageWorkerClient();
   private readonly idleClient = new IdleWorkerClient();
@@ -89,6 +94,9 @@ export class GameController {
   private lastSimulatedAtEpochMs = Date.now();
 
   private phase: GamePhase = "idle";
+  private prepared: PixelWorld | null = null;
+  /** The opening framing needs a real play area, which arrives a frame later. */
+  private needsFraming = false;
   private saveDirty = false;
   private lastAutosaveMs = 0;
   private detachContextHandler: (() => void) | null = null;
@@ -171,14 +179,22 @@ export class GameController {
       this.rng = new XorShift32(hashString(file.name + file.size) || 0x12345678);
       this.fractionalCarry = new Array(palette.length).fill(0);
 
-      const world = PixelWorld.create(palette, colorId);
-      this.startLevel(world);
-      this.saveDirty = true;
-      await this.save();
+      this.prepared = PixelWorld.create(palette, colorId);
+      this.events.onLevelPrepared?.(palette, this.prepared.colorId, this.prepared.width);
     } catch (error) {
       this.setPhase("idle");
       this.events.onError?.(error instanceof Error ? error.message : String(error));
     }
+  }
+
+  /** Starts the level the last import prepared. */
+  startPreparedLevel(): void {
+    if (!this.prepared) return;
+    const world = this.prepared;
+    this.prepared = null;
+    this.startLevel(world);
+    this.saveDirty = true;
+    void this.save();
   }
 
   private startLevel(
@@ -210,11 +226,14 @@ export class GameController {
     this.board = new PixelTextureRenderer(world.colorId, world.width, world.height, world.palette, {
       uploadHz: this.lod.currentBudget.textureUploadHz,
     });
-    this.projectiles = new ProjectileRenderer(this.app.renderer, world.palette);
+    this.projectiles = new ProjectileRenderer(world.palette);
 
     this.boardLayer.addChild(this.board.mesh);
     this.boardLayer.addChild(this.projectiles.view);
-    this.layoutBoard();
+
+    // Balls are one cell across, so the level opens close enough for a
+    // destroyed pixel to read as an event rather than as noise.
+    this.needsFraming = true;
 
     this.detachContextHandler = PixelTextureRenderer.attachContextLossHandler(
       this.app.renderer,
@@ -249,23 +268,22 @@ export class GameController {
     this.reserve = null;
   }
 
-  /**
-   * Fits the 1024² board inside the viewport, preserving the aspect ratio and
-   * keeping clear of the HUD panel on wide screens.
-   */
-  layoutBoard(): void {
-    const { width, height } = this.app.renderer;
-    const margin = 24;
-    const hudWidth = width >= 900 ? HUD_WIDTH : 0;
+  /** Frames the board into the play area the layout provides. */
+  layoutBoard(area: ScreenRect): void {
+    this.viewport.setArea(area);
+    // The opening zoom can only be computed once the play area is measured;
+    // running it earlier would clamp against a placeholder rectangle.
+    if (this.needsFraming) {
+      this.needsFraming = false;
+      this.viewport.reset();
+    }
+    this.applyViewport();
+  }
 
-    const available = Math.max(1, width - hudWidth - margin * 2);
-    const scale = Math.min(available / WORLD_WIDTH, (height - margin * 2) / WORLD_HEIGHT);
-
-    this.boardLayer.scale.set(scale);
-    this.boardLayer.position.set(
-      (available - WORLD_WIDTH * scale) / 2 + margin,
-      (height - WORLD_HEIGHT * scale) / 2,
-    );
+  /** Pushes the camera onto the render container. */
+  applyViewport(): void {
+    this.boardLayer.scale.set(this.viewport.scale);
+    this.boardLayer.position.set(this.viewport.offsetX(), this.viewport.offsetY());
   }
 
   // --- Loop ---------------------------------------------------------------
@@ -320,9 +338,7 @@ export class GameController {
       // a session; `beforeunload` is not dependable, especially on mobile.
       if (document.visibilityState === "hidden") void this.save();
     });
-    if (typeof window !== "undefined") {
-      window.addEventListener("resize", () => this.layoutBoard());
-    }
+
   }
 
   async save(): Promise<void> {

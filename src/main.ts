@@ -1,9 +1,10 @@
 import { Application } from "pixi.js";
 import { GameController } from "./app/GameController";
 import { detectFeatures } from "./app/FeatureDetection";
-import { DropZone } from "./ui/DropZone";
-import { Hud } from "./ui/Hud";
-import { ProgressPanel } from "./ui/ProgressPanel";
+import { GameScreen } from "./ui/GameScreen";
+import { ImportScreen } from "./ui/ImportScreen";
+import { OfflineScreen } from "./ui/OfflineScreen";
+import { ViewportControls } from "./ui/ViewportControls";
 
 async function boot(): Promise<void> {
   const features = detectFeatures();
@@ -24,58 +25,102 @@ async function boot(): Promise<void> {
     canvas,
     preference: "webgl",
     antialias: false,
-    background: 0x08080c,
-    resizeTo: window,
+    backgroundAlpha: 0,
     powerPreference: "high-performance",
   });
 
-  const progressPanel = new ProgressPanel();
+  // Declared ahead of the controller: its callbacks close over them, and they
+  // in turn need the controller to read state from.
+  let gameScreen: GameScreen;
+  let importScreen: ImportScreen;
+  let offlineScreen: OfflineScreen;
+  let syncBoard: () => void;
 
-  const game = new GameController(app, {
+  const game: GameController = new GameController(app, {
     onPhase: (phase) => {
       if (phase === "processing") {
-        dropZone.hide();
-        progressPanel.show();
+        importScreen.beginAnalysis();
       } else if (phase === "playing") {
-        progressPanel.hide();
-        dropZone.hide();
-        hud.show();
+        importScreen.hide();
+        gameScreen.show();
+        syncBoard();
       } else {
-        progressPanel.hide();
-        dropZone.show();
-        hud.hide();
+        gameScreen.hide();
+        importScreen.show();
       }
     },
-    onProgress: ({ stage, progress }) => progressPanel.update(stage, progress),
-    onLevelReady: () => hud.renderQueue(),
-    onMilestone: (milestone) => hud.announceMilestone(milestone),
-    onOfflineReport: (report) => hud.announceOffline(report.elapsedMs, report.totalDestroyed),
+    onProgress: ({ stage, progress }) => importScreen.updateStage(stage, progress),
+    onLevelPrepared: (palette, colorId, width) => {
+      importScreen.showResult(palette, colorId, width);
+    },
+    onLevelReady: (world) => {
+      gameScreen.setLevelLabel(`Image · ${world.paletteSize} couleurs`);
+      gameScreen.renderCards();
+    },
+    onMilestone: (milestone) => gameScreen.announceMilestone(milestone),
+    onOfflineReport: (report) => {
+      const world = game.getWorld();
+      if (world) offlineScreen.show(report, world.palette);
+    },
     onError: (message) => {
-      dropZone.showError(message);
-      hud.notify(message, "error");
+      importScreen.showError(message);
+      gameScreen.notify(message, "error");
     },
   });
 
-  const hud = new Hud(game);
-  const dropZone = new DropZone((file, options) => void game.importImage(file, options));
+  importScreen = new ImportScreen((file, options) => void game.importImage(file, options));
+  gameScreen = new GameScreen(game);
+  offlineScreen = new OfflineScreen(() => {});
+
+  importScreen.onStart(() => game.startPreparedLevel());
+
+  const zoomLevel = document.getElementById("zoom-level") as HTMLOutputElement;
+  const showZoom = (): void => {
+    game.applyViewport();
+    const scale = game.viewport.scale;
+    zoomLevel.textContent = `×${scale.toFixed(scale < 10 ? 1 : 0)}`;
+  };
+
+  const controls = new ViewportControls(canvas, game.viewport, showZoom);
+  document.getElementById("zoom-in")!.addEventListener("click", () => controls.zoomIn());
+  document.getElementById("zoom-out")!.addEventListener("click", () => controls.zoomOut());
+  document.getElementById("zoom-fit")!.addEventListener("click", () => controls.fit());
+  document.getElementById("pause")!.addEventListener("click", () => gameScreen.toggleDebug());
+
+  /**
+   * The canvas lives inside the play area, so the camera's rectangle is simply
+   * the canvas itself — in logical pixels, not device pixels.
+   */
+  syncBoard = (): void => {
+    const size = gameScreen.takeBoardSize();
+    if (!size) return;
+    // Pixi cannot measure the canvas while the game screen is still hidden, so
+    // the size is pushed in from the layout rather than polled.
+    app.renderer.resize(size.width, size.height);
+    game.layoutBoard({ x: 0, y: 0, width: size.width, height: size.height });
+    showZoom();
+  };
+
+  app.ticker.add(() => {
+    syncBoard();
+    gameScreen.update(performance.now());
+  });
+  window.addEventListener("resize", syncBoard);
 
   if (!features.indexedDB) {
-    hud.notify("IndexedDB indisponible : la partie ne sera pas sauvegardée.", "error");
+    gameScreen.notify("IndexedDB indisponible : la partie ne sera pas sauvegardée.", "error");
   }
 
-  app.ticker.add(() => hud.update(performance.now()));
-
   const restored = await game.restoreLatest().catch(() => false);
-  if (!restored) dropZone.show();
+  if (!restored) importScreen.show();
 
-  // Handy for manual profiling from the console.
-  Object.assign(window, { __game: game });
+  Object.assign(window, { __game: game, __controls: controls });
 }
 
 function fatal(message: string): void {
   const app = document.getElementById("app");
   if (!app) return;
-  app.innerHTML = `<div class="overlay"><div class="panel"><h1>Incompatible</h1><p class="lede">${message}</p></div></div>`;
+  app.innerHTML = `<section class="screen screen-import"><h1>Incompatible</h1><p class="lede">${message}</p></section>`;
 }
 
 void boot();

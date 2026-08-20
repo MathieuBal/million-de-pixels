@@ -1,15 +1,19 @@
-import {
-  Container,
-  Graphics,
-  Particle,
-  ParticleContainer,
-  Texture,
-  type Renderer,
-} from "pixi.js";
+import { Container, Particle, ParticleContainer, Texture } from "pixi.js";
 import type { PaletteEntry } from "../core/constants";
 import type { ImpactEvent } from "../combat/CombatSimulator";
 import { projectileX, projectileY, type ProjectilePool } from "../combat/ProjectilePool";
 import type { CannonAim } from "../combat/Cannon";
+
+/**
+ * Length of a cannon barrel, in board cells. Its width is always exactly one,
+ * so it covers precisely the lane it fires down and never a neighbouring one.
+ * The length is a readability choice only: at one cell in both directions the
+ * cannon is under a screen pixel at overview zoom and cannot be seen turning.
+ */
+const CANNON_LENGTH = 14;
+
+/** Starting size of an impact spark, in board cells. It shrinks to one. */
+const SPARK_SIZE = 3;
 
 interface Spark {
   particle: Particle;
@@ -38,13 +42,17 @@ export class ProjectileRenderer {
   private readonly sparks: Spark[] = [];
   private readonly sparkPool: Particle[] = [];
 
-  private dotTexture: Texture;
+  /**
+   * A single white texel. Drawn at scale 1 it covers exactly one board cell,
+   * so a ball is the size of the pixel it destroys — the whole point of the
+   * scale the game is played at.
+   */
+  private readonly dotTexture: Texture = Texture.WHITE;
   private palette: PaletteEntry[];
   private readonly muzzles: Particle[] = [];
 
-  constructor(renderer: Renderer, palette: PaletteEntry[], private readonly maxSparks = 1200) {
+  constructor(palette: PaletteEntry[], private readonly maxSparks = 1200) {
     this.palette = palette;
-    this.dotTexture = createDotTexture(renderer);
     this.view.addChild(this.sparkLayer);
     this.view.addChild(this.ballLayer);
   }
@@ -85,8 +93,10 @@ export class ProjectileRenderer {
       }
       muzzle.x = entry.aim.x;
       muzzle.y = entry.aim.y;
-      muzzle.scaleX = entry.aim.axis === "column" ? 3 : 6;
-      muzzle.scaleY = entry.aim.axis === "column" ? 6 : 3;
+      // One cell wide across its lane, a few cells long towards the board, so
+      // it reads as a barrel pointing in without ever covering a second lane.
+      muzzle.scaleX = entry.aim.axis === "column" ? 1 : CANNON_LENGTH;
+      muzzle.scaleY = entry.aim.axis === "column" ? CANNON_LENGTH : 1;
       muzzle.color = this.packedColorOf(entry.colorId);
     }
   }
@@ -106,8 +116,9 @@ export class ProjectileRenderer {
       // position is derived here, for drawing only.
       particle.x = projectileX(projectile);
       particle.y = projectileY(projectile);
-      particle.scaleX = 2.5;
-      particle.scaleY = 2.5;
+      // Exactly one cell: a ball is the size of the pixel it will destroy.
+      particle.scaleX = 1;
+      particle.scaleY = 1;
       particle.color = this.packedColorOf(projectile.colorId);
       used++;
     });
@@ -130,8 +141,8 @@ export class ProjectileRenderer {
 
       particle.x = impact.x;
       particle.y = impact.y;
-      particle.scaleX = 6;
-      particle.scaleY = 6;
+      particle.scaleX = SPARK_SIZE;
+      particle.scaleY = SPARK_SIZE;
       particle.color = this.packedColorOf(impact.colorId);
 
       this.sparkLayer.addParticle(particle);
@@ -153,7 +164,7 @@ export class ProjectileRenderer {
         continue;
       }
 
-      const scale = 6 * (1 - t) + 1;
+      const scale = SPARK_SIZE * (1 - t) + 1;
       spark.particle.scaleX = scale;
       spark.particle.scaleY = scale;
       // Only the alpha byte changes as the spark fades out.
@@ -168,14 +179,9 @@ export class ProjectileRenderer {
   }
 
   destroy(): void {
+    // Texture.WHITE is shared and owned by Pixi: never destroy it here.
     this.view.destroy({ children: true });
-    this.dotTexture.destroy(true);
   }
 }
 
-function createDotTexture(renderer: Renderer): Texture {
-  const graphics = new Graphics().circle(8, 8, 7).fill(0xffffff);
-  const texture = renderer.generateTexture({ target: graphics, resolution: 1 });
-  graphics.destroy();
-  return texture;
-}
+

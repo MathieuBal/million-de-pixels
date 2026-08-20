@@ -6,108 +6,201 @@
     <title>Un million de pixels</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23080810'/%3E%3Crect x='2' y='2' width='5' height='5' fill='%23e02828'/%3E%3Crect x='9' y='2' width='5' height='5' fill='%232850dc'/%3E%3Crect x='2' y='9' width='5' height='5' fill='%23f0d23c'/%3E%3Crect x='9' y='9' width='5' height='5' fill='%236de5b0'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230B0B0E'/%3E%3Crect x='3' y='3' width='4' height='4' fill='%23E8A13C'/%3E%3Crect x='9' y='3' width='4' height='4' fill='%23E2553F'/%3E%3Crect x='3' y='9' width='4' height='4' fill='%232F6B7A'/%3E%3Crect x='9' y='9' width='4' height='4' fill='%23F3D9A4'/%3E%3C/svg%3E"
+    />
+    <!-- TODO: self-host these two families. The design calls for it, and a
+         blocked or slow CDN currently costs the first paint its typography. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
     <link rel="stylesheet" href="/src/ui/styles.css" />
   </head>
   <body>
     <div id="app">
-      <canvas id="board"></canvas>
+      <!-- 01 — Import & quantification -->
+      <section id="screen-import" class="screen screen-import">
+        <div class="eyebrow">Nouvelle image</div>
+        <h1>Déposez n'importe<br />quelle image.</h1>
+        <p class="lede">
+          Elle devient 1&nbsp;024 × 1&nbsp;024 cellules, réduites à 6–16 couleurs. Chaque
+          couleur devient une cible, un compteur et une carte.
+        </p>
 
-      <div id="dropzone" class="overlay">
-        <div class="panel">
-          <h1>Un million de pixels</h1>
-          <p class="lede">
-            Déposez une image. Elle devient une grille de 1&nbsp;024 × 1&nbsp;024 cellules,
-            quantifiée en 6 à 16 couleurs, que votre deck doit détruire couleur par couleur.
-          </p>
-
-          <label class="file-button">
-            <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" />
-            Choisir une image
-          </label>
-
-          <details class="advanced">
-            <summary>Réglages avancés</summary>
-            <div class="options">
-              <label class="checkbox">
-                <input id="auto-palette" type="checkbox" checked />
-                Détecter la palette automatiquement
-              </label>
-              <label>
-                Couleurs
-                <input id="palette-size" type="range" min="6" max="16" value="8" disabled />
-                <output id="palette-size-value">auto</output>
-              </label>
-              <label>
-                Cadrage
-                <select id="fit-mode">
-                  <option value="contain">contain (silhouette)</option>
-                  <option value="cover">cover (plein cadre)</option>
-                  <option value="stretch">stretch</option>
-                </select>
-              </label>
-              <label>
-                Quantification
-                <select id="quantizer">
-                  <option value="">automatique</option>
-                  <option value="median-cut">Median Cut (rapide)</option>
-                  <option value="median-cut+kmeans">Median Cut + k-means (qualité)</option>
-                </select>
-              </label>
-              <label class="checkbox">
-                <input id="fill-margins" type="checkbox" />
-                Million plein (marges jouables)
-              </label>
+        <label id="dropzone" class="dropzone">
+          <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" />
+          <div class="previews">
+            <div id="source-preview" class="preview-source">
+              <span>image<br />source<br />du joueur</span>
             </div>
-          </details>
-
-          <p id="drop-hint" class="hint">…ou glissez-déposez le fichier ici (PNG, JPEG, WebP).</p>
-          <p id="drop-error" class="error" hidden></p>
-        </div>
-      </div>
-
-      <div id="progress" class="overlay" hidden>
-        <div class="panel">
-          <h2>Analyse de l'image</h2>
-          <ol id="stages" class="stages"></ol>
-        </div>
-      </div>
-
-      <aside id="hud" hidden>
-        <header>
-          <div class="remaining">
-            <span id="alive-count">—</span>
-            <small>/ <span id="playable-count">—</span> pixels</small>
+            <div id="quantized-preview" class="preview-quantized"></div>
           </div>
-          <div class="progress-bar"><div id="progress-fill"></div></div>
-          <div class="destroyed"><span id="progress-percent">0,0 %</span> détruit</div>
+          <div class="palette-report">
+            <div class="row-mono">
+              <span>palette détectée</span>
+              <span id="palette-count">—</span>
+            </div>
+            <div id="palette-swatches" class="swatches"></div>
+          </div>
+        </label>
+
+        <p id="drop-error" class="error" hidden></p>
+
+        <div id="import-rows" class="setting-rows">
+          <div class="setting-row">
+            <span class="label">Cadrage</span><span class="value">contain · silhouette</span>
+          </div>
+          <div class="setting-row">
+            <span class="label">Quantification</span><span class="value">automatique</span>
+          </div>
+          <div class="setting-row">
+            <span class="label">Marges jouables</span><span class="value">désactivé</span>
+          </div>
+        </div>
+
+        <ol id="stages" class="stages" hidden></ol>
+
+        <details class="advanced">
+          <summary>Réglages avancés</summary>
+          <div class="advanced-body">
+            <label class="adv-row">
+              <span>Détecter la palette</span>
+              <input id="auto-palette" type="checkbox" checked />
+            </label>
+            <label class="adv-row">
+              <span>Couleurs</span>
+              <input id="palette-size" type="range" min="6" max="16" value="8" disabled />
+              <output id="palette-size-value">auto</output>
+            </label>
+            <label class="adv-row">
+              <span>Cadrage</span>
+              <select id="fit-mode">
+                <option value="contain">contain</option>
+                <option value="cover">cover</option>
+                <option value="stretch">stretch</option>
+              </select>
+            </label>
+            <label class="adv-row">
+              <span>Quantification</span>
+              <select id="quantizer">
+                <option value="">automatique</option>
+                <option value="median-cut">median cut</option>
+                <option value="median-cut+kmeans">median cut + k-means</option>
+              </select>
+            </label>
+            <label class="adv-row">
+              <span>Marges jouables</span>
+              <input id="fill-margins" type="checkbox" />
+            </label>
+          </div>
+        </details>
+
+        <div class="import-footer">
+          <div class="notice">
+            <i></i>
+            <span>l'image source n'est jamais stockée — seul le niveau quantifié l'est</span>
+          </div>
+          <button id="start-run" class="cta" type="button" disabled>Lancer la partie</button>
+        </div>
+      </section>
+
+      <!-- 02 — Écran de jeu -->
+      <section id="screen-game" class="screen screen-game" hidden>
+        <header class="topbar">
+          <div class="coin">
+            <i></i><span id="coin-count">0</span>
+          </div>
+          <div class="run-label">
+            <span class="eyebrow" id="level-label">Image</span>
+            <span id="round-label">Manche 1</span>
+          </div>
+          <button id="pause" class="icon-button" type="button" aria-label="Pause">
+            <i></i><i></i>
+          </button>
         </header>
 
-        <table id="color-table">
-          <thead>
-            <tr><th>Couleur</th><th>Restants</th><th>% px</th><th>% tirs</th><th>px/s</th></tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+        <div class="board-frame">
+          <div class="rail"></div>
+          <div id="play-area" class="play-area">
+            <!-- The board is Pixi: one R8 texture and a palette shader, never a
+                 grid of divs. It is clipped to this box, which is also what
+                 bounds panning and zooming. -->
+            <canvas id="board"></canvas>
+          </div>
+          <div id="rail-tokens" class="rail-tokens"></div>
 
-        <section id="rail-panel">
-          <h3>Rail <span id="rail-count" class="rail-count">0 / 5</span></h3>
-          <ul id="cannon-list"></ul>
-        </section>
+          <div id="zoom-controls" class="zoom">
+            <button id="zoom-in" type="button" title="Zoomer">+</button>
+            <output id="zoom-level">×1</output>
+            <button id="zoom-out" type="button" title="Dézoomer">−</button>
+            <button id="zoom-fit" type="button" title="Vue d'ensemble">⤢</button>
+          </div>
+        </div>
 
-        <section id="queue-panel">
-          <h3>Prochains canons</h3>
-          <ul id="queue-list"></ul>
-        </section>
+        <div class="progress">
+          <div class="progress-head">
+            <span class="alive"
+              ><span id="alive-count">—</span
+              ><small> / <span id="playable-count">—</span> px</small></span
+            >
+            <span id="progress-percent" class="pct">0,0 %</span>
+          </div>
+          <div class="bar"><div id="progress-fill"></div></div>
+          <div id="color-stats" class="color-stats"></div>
+        </div>
 
-        <section id="perf-panel">
-          <h3>Profilage</h3>
-          <dl id="perf-list"></dl>
-        </section>
+        <div id="slots" class="slots"></div>
+
+        <div id="cards" class="cards"></div>
+
+        <div class="boosters">
+          <button class="booster" type="button" disabled>
+            <span class="glyph">×2</span><span class="label">cadence</span>
+          </button>
+          <button class="booster" type="button" disabled>
+            <span class="glyph">⌖</span><span class="label">visée</span>
+          </button>
+          <button class="booster" type="button" disabled>
+            <span class="glyph">▦</span><span class="label">salve</span>
+          </button>
+          <button class="booster" type="button" disabled>
+            <span class="glyph">+1</span><span class="label">slot</span>
+          </button>
+        </div>
 
         <p id="toast" class="toast" hidden></p>
-      </aside>
+
+        <aside id="debug-panel" class="debug" hidden>
+          <div class="eyebrow">Profilage</div>
+          <dl id="perf-list"></dl>
+          <table id="color-table">
+            <thead>
+              <tr><th>Couleur</th><th>Restants</th><th>% px</th><th>% tirs</th><th>px/s</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </aside>
+      </section>
+
+      <!-- 03 — Retour hors-ligne -->
+      <section id="screen-offline" class="screen screen-offline" hidden>
+        <div class="offline-scrim"></div>
+        <div class="offline-panels">
+          <div class="panel">
+            <div class="eyebrow" id="offline-duration">Absence</div>
+            <div class="offline-total" id="offline-total">0</div>
+            <p class="offline-caption">
+              pixels réellement retirés du plateau pendant votre absence.
+            </p>
+            <div id="offline-colors" class="offline-colors"></div>
+          </div>
+          <button id="offline-resume" class="cta" type="button">Reprendre</button>
+        </div>
+      </section>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

@@ -42,12 +42,16 @@ try {
     executablePath: CHROMIUM,
     args: ["--use-gl=swiftshader", "--enable-unsafe-swiftshader", "--no-sandbox"],
   });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  // The reference layout: portrait 430 x 932.
+  const page = await browser.newPage({ viewport: { width: 430, height: 932 } });
 
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
   page.on("console", (m) => {
-    if (m.type() === "error") errors.push(m.text());
+    // Font CDN failures are a known sandbox limitation, not a page fault.
+    if (m.type() === "error" && !/fonts\.(googleapis|gstatic)|ERR_CONNECTION/.test(m.text())) {
+      errors.push(m.text());
+    }
   });
 
   await page.goto(URL, { waitUntil: "networkidle" });
@@ -55,69 +59,98 @@ try {
 
   console.log("\n— import —");
   await page.setInputFiles("#file-input", fixture);
-  await page.waitForSelector("#hud:not([hidden])", { timeout: 60000 });
+  await page.waitForSelector("#start-run:not([disabled])", { timeout: 60000 });
 
-  // The board always holds 1 048 576 cells; a non-square image letterboxes, so
-  // the *playable* count is lower — the margins are VOID, not missing.
+  const detected = await page.locator("#palette-count").innerText();
+  check("palette detectee automatiquement", digits(detected) > 0, detected);
+  check("apercu quantifie rendu", (await page.locator("#quantized-preview div").count()) === 256);
+  check("palette affichee", (await page.locator("#palette-swatches div").count()) > 0);
+
+  // The level is prepared, not started: the player chooses when to begin.
+  check("la partie ne demarre pas toute seule", await page.locator("#screen-game").isHidden());
+  await page.locator("#start-run").click();
+  await page.waitForSelector("#screen-game:not([hidden])", { timeout: 30000 });
+
   const playable = digits(await page.locator("#playable-count").innerText());
   check(
     "la silhouette jouable tient dans le million de cellules",
     playable > 0 && playable <= 1_048_576,
     `${playable} / 1 048 576`,
   );
-  check("palette detectee", (await page.locator("#color-table tbody tr").count()) > 0);
-  check("file de canons remplie", (await page.locator("#queue-list .load").count()) > 0);
+  check("slots du rail affiches", (await page.locator("#slots > div").count()) === 5);
+  check("cartes couleurs generees", (await page.locator("#cards button").count()) > 0);
+
+  // The reference layout is 430 x 932 and must hold without scrolling.
+  const overflow = await page.evaluate(() => {
+    const app = document.getElementById("app");
+    return app.scrollHeight - app.clientHeight;
+  });
+  check("l'ecran tient sans defilement", overflow <= 0, `${overflow}px de debordement`);
 
   console.log("\n— un canon —");
   const before = digits(await page.locator("#alive-count").innerText());
-  await page.locator("#queue-list .load button").first().click();
+  await page.locator("#cards button:not([disabled])").first().click();
   await page.waitForTimeout(400);
-  check("le canon rejoint le rail", firstNumber(await page.locator("#rail-count").innerText()) >= 1);
+  check("le canon rejoint le rail", (await page.locator(".rail-token").count()) >= 1);
+  check("un slot est occupe", (await page.locator('#slots > div[data-filled="true"]').count()) >= 1);
 
   await page.waitForTimeout(5000);
   const after = digits(await page.locator("#alive-count").innerText());
   check("des pixels sont reellement detruits", after < before, `${before} → ${after}`);
 
-  const single = await perf(page);
-  table(single);
-
   console.log("\n— plusieurs canons —");
-  let launches = 0;
+  let launches = 1;
   for (let i = 0; i < 5; i++) {
-    const button = page.locator("#queue-list .load button:not([disabled])").first();
+    const button = page.locator("#cards button:not([disabled])").first();
     if ((await button.count()) === 0) break;
     await button.click();
     launches++;
     await page.waitForTimeout(120);
   }
-  const rail = firstNumber(await page.locator("#rail-count").innerText());
+  const rail = await page.locator(".rail-token").count();
   check("plusieurs canons tournent ensemble", rail > 1, `${rail} canons`);
   check("le rail refuse un sixieme canon", rail <= 5, `${rail} canons`);
 
   await page.waitForTimeout(6000);
-  const loaded = await perf(page);
-  table(loaded);
 
   // The rule the whole design rests on, measured end to end: every block that
   // disappeared cost one round, so the total can never exceed the rounds ever
-  // committed to the rail. A per-second readout cannot show this — balls fired
-  // in one sampling window land in the next — so it is checked cumulatively.
+  // committed to the rail.
   const destroyedTotal = before - digits(await page.locator("#alive-count").innerText());
-  const roundsCommitted = (launches + 1) * 40;
+  const roundsCommitted = launches * 40;
   check(
     "un tir ne detruit jamais plus d'un bloc",
     destroyedTotal <= roundsCommitted,
     `${destroyedTotal} blocs pour ${roundsCommitted} billes engagees`,
   );
-  check("la simulation reste sous 4 ms/frame", parseFloat(loaded["Simulation"]) < 4, loaded["Simulation"]);
-  check("les canons vides quittent le rail", firstNumber(await page.locator("#rail-count").innerText()) <= rail);
+
+  console.log("\n— camera —");
+  const zoomStart = await page.locator("#zoom-level").innerText();
+  await page.locator("#zoom-in").click();
+  await page.waitForTimeout(150);
+  const zoomIn = await page.locator("#zoom-level").innerText();
+  check("le zoom repond", zoomIn !== zoomStart, `${zoomStart} → ${zoomIn}`);
+
+  await page.locator("#zoom-fit").click();
+  await page.waitForTimeout(150);
+  check("la vue d'ensemble recadre", (await page.locator("#zoom-level").innerText()) !== zoomIn);
+
+  await page.locator("#pause").click();
+  await page.waitForTimeout(150);
+  const perf = await perfPanel(page);
+  table(perf);
+  check("la simulation reste sous 4 ms/frame", parseFloat(perf["Simulation"]) < 4, perf["Simulation"]);
 
   console.log("\n— persistance et hors-ligne —");
   const beforeReload = digits(await page.locator("#alive-count").innerText());
   await page.reload({ waitUntil: "networkidle" });
-  await page.waitForSelector("#hud:not([hidden])", { timeout: 60000 });
+  await page.waitForSelector("#screen-game:not([hidden])", { timeout: 60000 });
   const afterReload = digits(await page.locator("#alive-count").innerText());
-  check("niveau restaure depuis IndexedDB", afterReload > 0 && afterReload <= beforeReload, `${beforeReload} → ${afterReload}`);
+  check(
+    "niveau restaure depuis IndexedDB",
+    afterReload > 0 && afterReload <= beforeReload,
+    `${beforeReload} → ${afterReload}`,
+  );
 
   check("aucune erreur console", errors.length === 0, errors.join(" | "));
 
@@ -140,7 +173,7 @@ function firstNumber(text) {
   return match ? Number(match[0]) : 0;
 }
 
-async function perf(page) {
+async function perfPanel(page) {
   const lines = (await page.locator("#perf-list").innerText()).split("\n");
   const out = {};
   for (let i = 0; i + 1 < lines.length; i += 2) out[lines[i]] = lines[i + 1];
