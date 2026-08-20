@@ -74,6 +74,45 @@ describe("quantization", () => {
     assertCountInvariant(result.counts, result.voidPixels, W * H);
   });
 
+  it("still splits a palette when one colour dominates the image", () => {
+    // Regression: the population-weighted median lands outside the box when a
+    // single colour outweighs all the others combined. Bailing out there froze
+    // the palette at 3 entries on any poster-like image with a dominant field.
+    const W = 400;
+    const H = 100;
+    const image = new Uint8ClampedArray(W * H * 4);
+    const plan: Array<[[number, number, number], number]> = [
+      [[206, 41, 42], 0.63],
+      [[26, 18, 20], 0.22],
+      [[237, 228, 206], 0.1],
+      [[150, 26, 30], 0.04],
+      [[252, 246, 232], 0.01],
+    ];
+
+    let cursor = 0;
+    for (const [[r, g, b], share] of plan) {
+      const end = Math.min(W * H, cursor + Math.round(W * H * share));
+      for (; cursor < end; cursor++) {
+        const p = cursor * 4;
+        image[p] = r;
+        image[p + 1] = g;
+        image[p + 2] = b;
+        image[p + 3] = 255;
+      }
+    }
+    for (; cursor < W * H; cursor++) {
+      const p = cursor * 4;
+      image[p] = 206;
+      image[p + 1] = 41;
+      image[p + 2] = 42;
+      image[p + 3] = 255;
+    }
+
+    const result = quantize(image, { ...OPTIONS, paletteSize: 5 });
+    expect(result.palette).toHaveLength(5);
+    for (const count of result.counts) expect(count).toBeGreaterThan(0);
+  });
+
   it("is deterministic across runs", () => {
     const image = gradientImage(128, 8);
     const a = quantize(image, { ...OPTIONS, paletteSize: 12 });
