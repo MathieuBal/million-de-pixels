@@ -21,6 +21,7 @@ export class DropZone {
   private readonly fitMode = document.getElementById("fit-mode") as HTMLSelectElement;
   private readonly quantizer = document.getElementById("quantizer") as HTMLSelectElement;
   private readonly fillMargins = document.getElementById("fill-margins") as HTMLInputElement;
+  private readonly autoPalette = document.getElementById("auto-palette") as HTMLInputElement;
 
   constructor(private readonly onImport: ImportHandler) {
     this.input.addEventListener("change", () => {
@@ -31,6 +32,12 @@ export class DropZone {
 
     this.paletteSize.addEventListener("input", () => {
       this.paletteValue.value = this.paletteSize.value;
+    });
+
+    this.autoPalette.addEventListener("change", () => {
+      const auto = this.autoPalette.checked;
+      this.paletteSize.disabled = auto;
+      this.paletteValue.value = auto ? "auto" : this.paletteSize.value;
     });
 
     for (const type of ["dragenter", "dragover"]) {
@@ -72,14 +79,19 @@ export class DropZone {
   }
 
   private readOptions(): ImageProcessOptions {
-    return {
+    const options: ImageProcessOptions = {
       width: WORLD_WIDTH,
       height: WORLD_HEIGHT,
       fit: this.fitMode.value as FitMode,
-      paletteSize: Number(this.paletteSize.value),
-      quantizer: this.quantizer.value as QuantizerKind,
       alphaThreshold: DEFAULT_ALPHA_THRESHOLD,
       fillMargins: this.fillMargins.checked,
     };
+
+    // Both are absent by default: the image decides. They are only sent when
+    // someone deliberately overrides them from the advanced panel.
+    if (!this.autoPalette.checked) options.paletteSize = Number(this.paletteSize.value);
+    if (this.quantizer.value) options.quantizer = this.quantizer.value as QuantizerKind;
+
+    return options;
   }
 }

@@ -8,7 +8,7 @@ import {
   WORLD_WIDTH,
   type PaletteEntry,
 } from "../core/constants";
-import { generateDeck } from "../deck/DeckGenerator";
+import { deckSizeFor, generateDeck } from "../deck/DeckGenerator";
 import { DeckRuntime } from "../deck/DeckRuntime";
 import type { ColorCard } from "../deck/cards";
 import { ImageWorkerClient, type ImageProgress } from "../image/ImageWorkerClient";
@@ -26,6 +26,7 @@ import {
   VisualLODController,
 } from "../rendering/VisualLODController";
 import { RNG_ALGORITHM, XorShift32 } from "../rng/XorShift32";
+import { ColorStats } from "../world/ColorStats";
 import { PixelWorld } from "../world/PixelWorld";
 import { isMobileProfile } from "./FeatureDetection";
 import { MilestoneTracker, type Milestone } from "./milestones";
@@ -50,7 +51,6 @@ export interface GameEvents {
 }
 
 const PROFILE_ID = "local";
-const DEFAULT_DECK_SIZE = 12;
 const AUTOSAVE_INTERVAL_MS = 10_000;
 /** Keeps the board clear of the HUD panel; mirrors #hud in styles.css. */
 const HUD_WIDTH = 352;
@@ -78,6 +78,7 @@ export class GameController {
   private board: PixelTextureRenderer | null = null;
   private projectiles: ProjectileRenderer | null = null;
   private milestones = new MilestoneTracker();
+  private stats: ColorStats | null = null;
 
   private rng = new XorShift32(0x12345678);
   private fractionalCarry: number[] = [];
@@ -118,6 +119,10 @@ export class GameController {
     return this.combat;
   }
 
+  getStats(): ColorStats | null {
+    return this.stats;
+  }
+
   private setPhase(phase: GamePhase): void {
     this.phase = phase;
     this.events.onPhase?.(phase);
@@ -135,8 +140,7 @@ export class GameController {
         width: WORLD_WIDTH,
         height: WORLD_HEIGHT,
         fit: "contain",
-        paletteSize: 8,
-        quantizer: "median-cut",
+        // No paletteSize and no quantizer: the worker reads them off the image.
         alphaThreshold: DEFAULT_ALPHA_THRESHOLD,
         fillMargins: false,
         ...overrides,
@@ -157,10 +161,7 @@ export class GameController {
 
       const world = PixelWorld.create(palette, colorId);
       const deck = new DeckRuntime(
-        generateDeck(
-          palette.map((entry) => entry.count),
-          { deckSize: DEFAULT_DECK_SIZE },
-        ),
+        generateDeck(palette, { deckSize: deckSizeFor(palette.length) }),
       );
 
       this.startLevel(world, deck, new Cannon());
@@ -179,6 +180,7 @@ export class GameController {
     this.deck = deck;
     this.cannon = cannon;
     this.milestones = new MilestoneTracker(world.progress());
+    this.stats = new ColorStats(world);
 
     this.combat = new CombatSimulator(world, deck, cannon, this.rng, {}, this.lod);
 
@@ -265,6 +267,10 @@ export class GameController {
       this.world.clearDirty();
     }
     this.board.syncTexture(nowMs);
+
+    // The chromatic distribution is live gameplay data, not a readout: it is
+    // what drives bottleneck detection and, later, the deck's adaptation.
+    this.stats?.sample(nowMs, this.deck?.damagePerSecondByColor(this.world));
 
     const crossed = this.milestones.update(this.world.progress());
     for (const milestone of crossed) this.events.onMilestone?.(milestone);

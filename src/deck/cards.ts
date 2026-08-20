@@ -1,10 +1,12 @@
-import type { ColorId } from "../core/constants";
+import type { ColorId, ColorRarity } from "../core/constants";
 
 export type CardModifier = "pierce" | "ricochet" | "split" | "burst";
 
 export interface ColorCard {
   id: string;
   colorId: ColorId;
+  /** Rarity of the colour this card targets, not of the card itself. */
+  rarity: ColorRarity;
   level: number;
 
   /** Balls fired per volley. Beyond `LOGICAL_BURST_THRESHOLD` they go batched. */
@@ -41,17 +43,41 @@ export const BASE_CARD = {
   logicalBurst: 0,
 } as const;
 
-export function makeCard(colorId: ColorId, copy: number): ColorCard {
+/**
+ * What a colour's scarcity is worth on the card that targets it.
+ *
+ * The image's own chromatic rarity becomes the deck's rarity: a colour that
+ * covers 0.3% of the level is a scarce resource, and the card that spends it
+ * hits proportionately harder. Opening values, to calibrate.
+ */
+export const RARITY_BONUS: Record<ColorRarity, {
+  damage: number;
+  ricochet: number;
+  pierce: number;
+}> = {
+  commune: { damage: 1, ricochet: 0, pierce: 0 },
+  "peu-commune": { damage: 1, ricochet: 0, pierce: 1 },
+  rare: { damage: 2, ricochet: 1, pierce: 2 },
+  exotique: { damage: 3, ricochet: 2, pierce: 4 },
+};
+
+export function makeCard(
+  colorId: ColorId,
+  copy: number,
+  rarity: ColorRarity = "commune",
+): ColorCard {
+  const bonus = RARITY_BONUS[rarity];
   return {
     id: `c${colorId}-${copy}`,
     colorId,
+    rarity,
     level: 1,
     ballCount: BASE_CARD.ballCount,
     fireIntervalMs: BASE_CARD.fireIntervalMs,
-    damage: BASE_CARD.damage,
+    damage: BASE_CARD.damage * bonus.damage,
     speed: BASE_CARD.speed,
-    pierce: BASE_CARD.pierce,
-    ricochet: BASE_CARD.ricochet,
+    pierce: BASE_CARD.pierce + bonus.pierce,
+    ricochet: BASE_CARD.ricochet + bonus.ricochet,
     logicalBurst: BASE_CARD.logicalBurst,
     modifiers: [],
     prismatic: false,

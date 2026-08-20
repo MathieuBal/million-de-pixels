@@ -172,7 +172,7 @@ function splitBox(
   });
   order.set(slice, box.start);
 
-  // Cut at the population-weighted median, keeping both halves non empty.
+  // Cut at the population-weighted median.
   const half = box.weight / 2;
   let accumulated = 0;
   let cut = box.start + 1;
@@ -184,7 +184,14 @@ function splitBox(
     }
     cut = i + 2;
   }
-  if (cut <= box.start || cut >= box.end) return null;
+
+  // The median lands outside the box whenever one point outweighs all the
+  // others put together — a dominant colour sorted to either end. Clamping
+  // rather than bailing out is what keeps the box splittable: giving up here
+  // would freeze the palette early on any image with a dominant colour, which
+  // is most posters and most illustrations.
+  if (cut < box.start + 1) cut = box.start + 1;
+  if (cut > box.end - 1) cut = box.end - 1;
 
   return [
     makeBox(histogram, order, box.start, cut, selection),

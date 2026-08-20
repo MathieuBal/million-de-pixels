@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { allocateCards, deckWeights, generateDeck } from "../../src/deck/DeckGenerator";
+import {
+  allocateCards,
+  deckSizeFor,
+  deckWeights,
+  generateDeck,
+} from "../../src/deck/DeckGenerator";
 import { DeckRuntime } from "../../src/deck/DeckRuntime";
 import { makeCard, upgradeCard } from "../../src/deck/cards";
 import { PixelWorld } from "../../src/world/PixelWorld";
-import { PIXEL_COUNT, type PaletteEntry } from "../../src/core/constants";
+import { PIXEL_COUNT } from "../../src/core/constants";
+import { makePalette } from "../fixtures/palette";
 
 function sum(values: Uint32Array | number[]): number {
   let total = 0;
@@ -58,9 +64,33 @@ describe("deck generation", () => {
   });
 
   it("builds one card object per allocated copy", () => {
-    const deck = generateDeck([400, 300, 300], { deckSize: 9 });
+    const deck = generateDeck(makePalette(3, [400, 300, 300]), { deckSize: 9 });
     expect(deck).toHaveLength(9);
     expect(new Set(deck.map((card) => card.id)).size).toBe(9);
+  });
+
+  it("sizes the deck from the palette, clamped to 12..24", () => {
+    expect(deckSizeFor(4)).toBe(12);
+    expect(deckSizeFor(6)).toBe(12);
+    expect(deckSizeFor(8)).toBe(16);
+    expect(deckSizeFor(10)).toBe(20);
+    expect(deckSizeFor(12)).toBe(24);
+    expect(deckSizeFor(16)).toBe(24);
+  });
+
+  it("turns a rare colour into a stronger card", () => {
+    // 0.2% of the image: scarce, so the card that spends it hits harder.
+    const palette = makePalette(2, [99_800, 200]);
+    const deck = generateDeck(palette, { deckSize: 12 });
+
+    const common = deck.find((card) => card.colorId === 0)!;
+    const exotic = deck.find((card) => card.colorId === 1)!;
+
+    expect(palette[1].rarity).toBe("exotique");
+    expect(exotic.rarity).toBe("exotique");
+    expect(exotic.damage).toBeGreaterThan(common.damage);
+    expect(exotic.pierce).toBeGreaterThan(common.pierce);
+    expect(exotic.ricochet).toBeGreaterThan(common.ricochet);
   });
 });
 
@@ -87,15 +117,7 @@ describe("DeckRuntime", () => {
     for (let i = 0; i < PIXEL_COUNT; i++) {
       colorId[i] = aliveColors[i % aliveColors.length];
     }
-    const palette: PaletteEntry[] = Array.from({ length: paletteSize }, (_, id) => ({
-      id,
-      r: id,
-      g: id,
-      b: id,
-      a: 255,
-      count: 0,
-    }));
-    return PixelWorld.create(palette, colorId);
+    return PixelWorld.create(makePalette(paletteSize), colorId);
   }
 
   it("fires immediately, then respects the interval once consumed", () => {

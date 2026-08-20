@@ -11,16 +11,14 @@ import { makeCard } from "../../src/deck/cards";
 import { PERIMETER } from "../../src/combat/Cannon";
 import { RNG_ALGORITHM } from "../../src/rng/XorShift32";
 import type { PaletteEntry } from "../../src/core/constants";
+import { makePalette } from "../fixtures/palette";
 
 const W = 32;
 const H = 32;
 const CELLS = W * H;
 
 function palette(): PaletteEntry[] {
-  return [
-    { id: 0, r: 255, g: 0, b: 0, a: 255, count: CELLS / 2 },
-    { id: 1, r: 0, g: 0, b: 255, a: 255, count: CELLS / 2 },
-  ];
+  return makePalette(2, [CELLS / 2, CELLS / 2]);
 }
 
 function makeSave(overrides: Partial<CurrentLevelSave> = {}): CurrentLevelSave {

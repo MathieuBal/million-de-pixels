@@ -21,9 +21,7 @@ export class Hud {
   private readonly toast = document.getElementById("toast") as HTMLElement;
 
   private toastTimer = 0;
-  private lastAliveByColor: number[] = [];
   private lastSampleMs = 0;
-  private ratePerColor: number[] = [];
 
   constructor(private readonly game: GameController) {}
 
@@ -62,7 +60,6 @@ export class Hud {
     if (!world) return;
     if (nowMs - this.lastSampleMs < 250) return;
 
-    const deltaSeconds = this.lastSampleMs === 0 ? 0 : (nowMs - this.lastSampleMs) / 1000;
     this.lastSampleMs = nowMs;
 
     const alive = world.aliveTotal();
@@ -73,46 +70,57 @@ export class Hud {
     this.progressFill.style.width = `${(progress * 100).toFixed(2)}%`;
     this.progressPercent.textContent = formatPercent(progress);
 
-    this.renderColors(world.paletteSize, deltaSeconds);
+    this.renderColors(world.paletteSize);
     this.renderPerf();
   }
 
-  private renderColors(paletteSize: number, deltaSeconds: number): void {
+  private renderColors(paletteSize: number): void {
     const world = this.game.getWorld();
-    if (!world) return;
+    const stats = this.game.getStats();
+    if (!world || !stats) return;
 
     if (this.colorBody.childElementCount !== paletteSize) {
       this.colorBody.replaceChildren();
       for (let colour = 0; colour < paletteSize; colour++) {
         const entry = world.palette[colour];
         const row = document.createElement("tr");
+        // Rarity is only spelled out when it is worth noticing — a column of
+        // "COMMUNE" repeated eight times is noise, not information.
+        const rarity =
+          entry.rarity === "commune"
+            ? ""
+            : ` <span class="rarity r-${entry.rarity}">${entry.rarity}</span>`;
         row.innerHTML =
-          `<td><span class="swatch" style="background:${cssColor(entry.r, entry.g, entry.b)}"></span>#${colour}</td>` +
-          `<td class="alive"></td><td class="share"></td><td class="rate"></td>`;
+          `<td><span class="swatch" style="background:${cssColor(entry.r, entry.g, entry.b)}"></span>` +
+          `#${colour}${rarity}</td>` +
+          `<td class="alive"></td><td class="share"></td><td class="dps"></td><td class="rate"></td>`;
         this.colorBody.appendChild(row);
       }
     }
 
     const rows = this.colorBody.children;
-    for (let colour = 0; colour < paletteSize; colour++) {
-      const alive = world.aliveByColor(colour);
-      const previous = this.lastAliveByColor[colour] ?? alive;
-      if (deltaSeconds > 0) {
-        const instant = (previous - alive) / deltaSeconds;
-        // Smoothed so the number is readable instead of flickering.
-        this.ratePerColor[colour] = (this.ratePerColor[colour] ?? 0) * 0.7 + instant * 0.3;
-      }
-      this.lastAliveByColor[colour] = alive;
+    // A colour holding this much more of the board than of the deck's output
+    // is what the run is waiting on.
+    const bottlenecks = new Set(stats.bottlenecks().map((b) => b.colorId));
+    const wasted = new Set(stats.wasted().map((b) => b.colorId));
 
+    for (let colour = 0; colour < paletteSize; colour++) {
+      const entry = stats.entryOf(colour);
       const row = rows[colour] as HTMLElement;
-      row.dataset.exhausted = String(alive === 0);
-      (row.querySelector(".alive") as HTMLElement).textContent = formatCount(alive);
+
+      row.dataset.exhausted = String(entry.exhausted);
+      row.dataset.flag = bottlenecks.has(colour)
+        ? "bottleneck"
+        : wasted.has(colour)
+          ? "waste"
+          : "";
+
+      (row.querySelector(".alive") as HTMLElement).textContent = formatCount(entry.alive);
       (row.querySelector(".share") as HTMLElement).textContent = formatPercent(
-        world.playablePixels === 0 ? 0 : alive / world.playablePixels,
+        entry.shareOfRemaining,
       );
-      (row.querySelector(".rate") as HTMLElement).textContent = formatCount(
-        Math.max(0, this.ratePerColor[colour] ?? 0),
-      );
+      (row.querySelector(".dps") as HTMLElement).textContent = formatPercent(entry.dpsShare);
+      (row.querySelector(".rate") as HTMLElement).textContent = formatCount(entry.rate);
     }
   }
 
@@ -131,6 +139,9 @@ export class Hud {
       label.innerHTML =
         `<span class="swatch" style="background:${cssColor(entry.r, entry.g, entry.b)}"></span>` +
         `#${card.colorId} · niv.${card.level} · ${card.ballCount}×` +
+        (card.rarity !== "commune"
+          ? ` <span class="rarity r-${card.rarity}">${card.rarity}</span>`
+          : "") +
         (card.prismatic ? ` <span class="prismatic">prismatique</span>` : "");
 
       const button = document.createElement("button");
