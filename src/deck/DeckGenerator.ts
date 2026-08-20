@@ -1,3 +1,4 @@
+import type { PaletteEntry } from "../core/constants";
 import { makeCard, type ColorCard } from "./cards";
 
 export interface DeckGenerationOptions {
@@ -82,15 +83,27 @@ export function allocateCards(
   return allocation;
 }
 
+/**
+ * Deck size follows the palette the image produced.
+ *
+ * Enough copies for the distribution to carry meaning, capped so the board
+ * stays readable: 4–6 colours give 12 cards, 12 colours and up give 24.
+ */
+export function deckSizeFor(paletteSize: number): number {
+  return Math.max(12, Math.min(24, paletteSize * 2));
+}
+
 export function generateDeck(
-  counts: Uint32Array | number[],
+  palette: readonly PaletteEntry[],
   options: DeckGenerationOptions,
 ): ColorCard[] {
+  const counts = palette.map((entry) => entry.count);
   const allocation = allocateCards(counts, options.deckSize, options.alpha ?? 0.7);
+
   const deck: ColorCard[] = [];
   for (let colour = 0; colour < allocation.length; colour++) {
     for (let copy = 0; copy < allocation[colour]; copy++) {
-      deck.push(makeCard(colour, copy));
+      deck.push(makeCard(colour, copy, palette[colour]?.rarity ?? "commune"));
     }
   }
   return deck;

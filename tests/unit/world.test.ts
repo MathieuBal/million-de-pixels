@@ -1,19 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ColorIndex } from "../../src/world/ColorIndex";
 import { PixelWorld } from "../../src/world/PixelWorld";
-import { DEAD, PIXEL_COUNT, VOID, type PaletteEntry } from "../../src/core/constants";
+import { DEAD, PIXEL_COUNT, VOID } from "../../src/core/constants";
+import { makePalette as palette } from "../fixtures/palette";
 import { XorShift32 } from "../../src/rng/XorShift32";
 
-function palette(size: number, counts: number[] = []): PaletteEntry[] {
-  return Array.from({ length: size }, (_, id) => ({
-    id,
-    r: id * 16,
-    g: 255 - id * 16,
-    b: 128,
-    a: 255,
-    count: counts[id] ?? 0,
-  }));
-}
+
 
 /** Board where colour c occupies every cell with index % paletteSize === c. */
 function stripedWorld(paletteSize = 4, voidEvery = 0): PixelWorld {

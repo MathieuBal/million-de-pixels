@@ -6,9 +6,14 @@ export interface ImageProcessOptions {
   width: number;
   height: number;
   fit: FitMode;
-  /** 6..16 requested colors. The result may be smaller on simple images. */
-  paletteSize: number;
-  quantizer: QuantizerKind;
+  /**
+   * Number of colours to force. Omit it — the normal case — and the worker
+   * detects the palette from the image itself: the image defines the level,
+   * so the player never picks this.
+   */
+  paletteSize?: number;
+  /** Omit to let the worker pick by device profile. */
+  quantizer?: QuantizerKind;
   alphaThreshold: number;
   /**
    * When true the letterbox margins become a playable background color instead
@@ -35,6 +40,8 @@ export interface ImageCancelRequest {
 
 export type ImageWorkerRequest = ImageProcessRequest | ImageCancelRequest;
 
+import type { ColorRarity } from "../core/constants";
+
 export interface ImagePaletteEntry {
   id: number;
   r: number;
@@ -42,6 +49,11 @@ export interface ImagePaletteEntry {
   b: number;
   a: number;
   count: number;
+  /** Share of the playable pixels, in [0, 1]. */
+  share: number;
+  rarity: ColorRarity;
+  /** Lab distance to the nearest other palette entry. */
+  separation: number;
 }
 
 export interface ImageProgressResponse {
@@ -65,6 +77,22 @@ export interface ImageResultResponse {
     playablePixels: number;
     voidPixels: number;
     effectivePaletteSize: number;
+    /** How the palette was arrived at, for the level summary screen. */
+    paletteDetection: {
+      automatic: boolean;
+      candidates: Array<{
+        k: number;
+        score: number;
+        breakdown: {
+          visualQuality: number;
+          colorSeparation: number;
+          gameplayDistribution: number;
+          tinyClusterPenalty: number;
+        };
+      }>;
+      /** Palette ids kept despite being tiny, because they are distinct. */
+      rareColors: number[];
+    };
     sourceWidth: number;
     sourceHeight: number;
     durationMs: number;

@@ -175,3 +175,35 @@ tr[data-exhausted="true"] { opacity: 0.45; }
   border-color: rgba(255, 107, 107, 0.3);
   color: var(--danger);
 }
+
+.advanced {
+  margin: 20px 0 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.advanced summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+  list-style: none;
+}
+.advanced summary::before { content: "▸ "; }
+.advanced[open] summary::before { content: "▾ "; }
+.advanced summary:hover { color: var(--text); }
+.advanced .options { margin-top: 12px; }
+.options input:disabled { opacity: 0.4; }
+
+.rarity {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.r-commune { color: var(--muted); }
+.r-peu-commune { color: #8fc7e8; }
+.r-rare { color: #c9a0f0; }
+.r-exotique { color: #ffb454; }
+
+/* A colour taking more of the board than of the deck's output is the wall. */
+tr[data-flag="bottleneck"] td { background: rgba(255, 180, 84, 0.1); }
+tr[data-flag="bottleneck"] .share { color: #ffb454; font-weight: 600; }
+tr[data-flag="waste"] .dps { color: #ff6b6b; }

@@ -9,6 +9,8 @@ import type {
 } from "../image/ImageProtocol";
 import { MAX_SOURCE_DIMENSION } from "../image/ImageProtocol";
 import { buildHistogram } from "../image/quantization/histogram";
+import { rarityOf } from "../core/constants";
+import { analyzePalette } from "../image/quantization/autoPalette";
 import { medianCut } from "../image/quantization/medianCut";
 import { refineKMeans } from "../image/quantization/kmeans";
 import { mapPixels } from "../image/quantization/mapping";
@@ -78,12 +80,29 @@ ctx.onmessage = async (event: MessageEvent<ImageWorkerRequest>) => {
     progress(requestId, "histogram", 1);
     progress(requestId, "palette", 0);
 
-    const effectiveK = Math.min(options.paletteSize, histogram.distinctBuckets);
-    let palette = medianCut(histogram, effectiveK);
-    if (options.quantizer === "median-cut+kmeans" && palette.length > 1) {
-      palette = refineKMeans(histogram, palette);
+    // The palette is chosen from the image unless the caller forced a size.
+    const forced = options.paletteSize;
+    let palette;
+    let analysis: ReturnType<typeof analyzePalette> | null = null;
+
+    if (forced === undefined) {
+      analysis = analyzePalette(histogram, {
+        refine: options.quantizer !== "median-cut",
+      });
+      palette = analysis.palette;
+    } else {
+      let forcedColors = medianCut(histogram, Math.min(forced, histogram.distinctBuckets));
+      if (options.quantizer === "median-cut+kmeans" && forcedColors.length > 1) {
+        forcedColors = refineKMeans(histogram, forcedColors);
+      }
+      palette = dedupe(forcedColors).map((c) => ({
+        ...c,
+        share: 0,
+        rarity: "commune" as const,
+        separation: 0,
+        redundant: false,
+      }));
     }
-    palette = dedupe(palette);
     if (isStale(requestId)) return;
 
     progress(requestId, "palette", 1);
@@ -101,20 +120,40 @@ ctx.onmessage = async (event: MessageEvent<ImageWorkerRequest>) => {
       type: "IMAGE_RESULT",
       width: options.width,
       height: options.height,
-      palette: palette.map((c, id) => ({
-        id,
-        r: c.r,
-        g: c.g,
-        b: c.b,
-        a: 255,
-        count: mapped.counts[id],
-      })),
+      // Share and rarity come from the real mapped counts, not the histogram
+      // estimate the analyzer scored on: this is the number the deck and the
+      // HUD will quote to the player.
+      palette: palette.map((c, id) => {
+        const count = mapped.counts[id];
+        const share = mapped.playablePixels === 0 ? 0 : count / mapped.playablePixels;
+        return {
+          id,
+          r: c.r,
+          g: c.g,
+          b: c.b,
+          a: 255,
+          count,
+          share,
+          rarity: rarityOf(share),
+          separation: c.separation,
+        };
+      }),
       colorId: mapped.colorId.buffer as ArrayBuffer,
       counts: mapped.counts.buffer as ArrayBuffer,
       stats: {
         playablePixels: mapped.playablePixels,
         voidPixels: mapped.voidPixels,
         effectivePaletteSize: palette.length,
+        paletteDetection: {
+          automatic: forced === undefined,
+          candidates:
+            analysis?.candidates.map((candidate) => ({
+              k: candidate.k,
+              score: candidate.score,
+              breakdown: candidate.breakdown,
+            })) ?? [],
+          rareColors: analysis?.rareColors ?? [],
+        },
         sourceWidth,
         sourceHeight,
         durationMs: performance.now() - startedAt,

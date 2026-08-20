@@ -8,12 +8,8 @@ import { makeCard, upgradeCard } from "../../src/deck/cards";
 import { PixelWorld } from "../../src/world/PixelWorld";
 import { XorShift32 } from "../../src/rng/XorShift32";
 import { VisualLODController } from "../../src/rendering/VisualLODController";
-import {
-  DEAD,
-  PIXEL_COUNT,
-  WORLD_WIDTH,
-  type PaletteEntry,
-} from "../../src/core/constants";
+import { DEAD, PIXEL_COUNT, WORLD_WIDTH } from "../../src/core/constants";
+import { makePalette } from "../fixtures/palette";
 
 function makeWorld(paletteSize = 4): PixelWorld {
   const colorId = new Uint8Array(PIXEL_COUNT);
@@ -26,15 +22,10 @@ function makeWorld(paletteSize = 4): PixelWorld {
     const y = (i / WORLD_WIDTH) | 0;
     colorId[i] = (x + y) % paletteSize;
   }
-  const palette: PaletteEntry[] = Array.from({ length: paletteSize }, (_, id) => ({
-    id,
-    r: id * 40,
-    g: 100,
-    b: 200,
-    a: 255,
-    count: PIXEL_COUNT / paletteSize,
-  }));
-  return PixelWorld.create(palette, colorId);
+  return PixelWorld.create(
+    makePalette(paletteSize, new Array(paletteSize).fill(PIXEL_COUNT / paletteSize)),
+    colorId,
+  );
 }
 
 describe("BatchExecutor", () => {
@@ -209,15 +200,10 @@ describe("CombatSimulator", () => {
     // Column-striped board: column x is entirely colour x % 4.
     const colorId = new Uint8Array(PIXEL_COUNT);
     for (let i = 0; i < PIXEL_COUNT; i++) colorId[i] = (i % WORLD_WIDTH) % 4;
-    const palette: PaletteEntry[] = Array.from({ length: 4 }, (_, id) => ({
-      id,
-      r: id * 40,
-      g: 100,
-      b: 200,
-      a: 255,
-      count: PIXEL_COUNT / 4,
-    }));
-    const world = PixelWorld.create(palette, colorId);
+    const world = PixelWorld.create(
+      makePalette(4, new Array(4).fill(PIXEL_COUNT / 4)),
+      colorId,
+    );
 
     const deck = new DeckRuntime([makeCard(1, 0)]);
     // Parked on column 0, which holds only colour 0.

@@ -27,32 +27,40 @@
             Choisir une image
           </label>
 
-          <div class="options">
-            <label>
-              Couleurs
-              <input id="palette-size" type="range" min="6" max="16" value="8" />
-              <output id="palette-size-value">8</output>
-            </label>
-            <label>
-              Cadrage
-              <select id="fit-mode">
-                <option value="contain">contain (silhouette)</option>
-                <option value="cover">cover (plein cadre)</option>
-                <option value="stretch">stretch</option>
-              </select>
-            </label>
-            <label>
-              Quantification
-              <select id="quantizer">
-                <option value="median-cut">Median Cut (rapide)</option>
-                <option value="median-cut+kmeans">Median Cut + k-means (qualité)</option>
-              </select>
-            </label>
-            <label class="checkbox">
-              <input id="fill-margins" type="checkbox" />
-              Million plein (marges jouables)
-            </label>
-          </div>
+          <details class="advanced">
+            <summary>Réglages avancés</summary>
+            <div class="options">
+              <label class="checkbox">
+                <input id="auto-palette" type="checkbox" checked />
+                Détecter la palette automatiquement
+              </label>
+              <label>
+                Couleurs
+                <input id="palette-size" type="range" min="6" max="16" value="8" disabled />
+                <output id="palette-size-value">auto</output>
+              </label>
+              <label>
+                Cadrage
+                <select id="fit-mode">
+                  <option value="contain">contain (silhouette)</option>
+                  <option value="cover">cover (plein cadre)</option>
+                  <option value="stretch">stretch</option>
+                </select>
+              </label>
+              <label>
+                Quantification
+                <select id="quantizer">
+                  <option value="">automatique</option>
+                  <option value="median-cut">Median Cut (rapide)</option>
+                  <option value="median-cut+kmeans">Median Cut + k-means (qualité)</option>
+                </select>
+              </label>
+              <label class="checkbox">
+                <input id="fill-margins" type="checkbox" />
+                Million plein (marges jouables)
+              </label>
+            </div>
+          </details>
 
           <p id="drop-hint" class="hint">…ou glissez-déposez le fichier ici (PNG, JPEG, WebP).</p>
           <p id="drop-error" class="error" hidden></p>
@@ -78,7 +86,7 @@
 
         <table id="color-table">
           <thead>
-            <tr><th>Couleur</th><th>Restants</th><th>%</th><th>px/s</th></tr>
+            <tr><th>Couleur</th><th>Restants</th><th>% px</th><th>% DPS</th><th>px/s</th></tr>
           </thead>
           <tbody></tbody>
         </table>

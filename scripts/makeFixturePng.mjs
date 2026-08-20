@@ -24,7 +24,11 @@ function chunk(type, data) {
   return Buffer.concat([length, typed, crc]);
 }
 
-/** Four solid quadrants: predictable palette, predictable counts. */
+/**
+ * Four solid quadrants plus a tiny, unmistakably different speck — the "eyes"
+ * case: about 0.2% of the image, which must survive palette detection as a
+ * rare colour rather than being merged away.
+ */
 export function quadrantsPng(size = 256) {
   const colors = [
     [220, 40, 40],
@@ -44,6 +48,17 @@ export function quadrantsPng(size = 256) {
       raw[p] = r;
       raw[p + 1] = g;
       raw[p + 2] = b;
+    }
+  }
+
+  // The speck: a bright magenta block no other quadrant comes close to.
+  const speck = Math.max(2, Math.round(size * 0.045));
+  for (let y = 0; y < speck; y++) {
+    for (let x = 0; x < speck; x++) {
+      const p = (y + (size >> 1) - (speck >> 1)) * (size * 3 + 1) + 1 + (x + (size >> 1) - (speck >> 1)) * 3;
+      raw[p] = 240;
+      raw[p + 1] = 40;
+      raw[p + 2] = 200;
     }
   }
 
