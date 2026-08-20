@@ -8,7 +8,8 @@ import {
 } from "pixi.js";
 import type { PaletteEntry } from "../core/constants";
 import type { ImpactEvent } from "../combat/CombatSimulator";
-import type { ProjectilePool } from "../combat/ProjectilePool";
+import { projectileX, projectileY, type ProjectilePool } from "../combat/ProjectilePool";
+import type { CannonAim } from "../combat/Cannon";
 
 interface Spark {
   particle: Particle;
@@ -39,6 +40,7 @@ export class ProjectileRenderer {
 
   private dotTexture: Texture;
   private palette: PaletteEntry[];
+  private muzzle: Particle | null = null;
 
   constructor(renderer: Renderer, palette: PaletteEntry[], private readonly maxSparks = 1200) {
     this.palette = palette;
@@ -62,6 +64,19 @@ export class ProjectileRenderer {
     return (((alpha << 24) | (entry.b << 16) | (entry.g << 8) | entry.r) >>> 0);
   }
 
+  /** Draws the cannon at its current position on the border. */
+  syncCannon(aim: CannonAim): void {
+    if (!this.muzzle) {
+      this.muzzle = new Particle({ texture: this.dotTexture, anchorX: 0.5, anchorY: 0.5 });
+      this.ballLayer.addParticle(this.muzzle);
+    }
+    this.muzzle.x = aim.x;
+    this.muzzle.y = aim.y;
+    this.muzzle.scaleX = aim.axis === "column" ? 2.5 : 5;
+    this.muzzle.scaleY = aim.axis === "column" ? 5 : 2.5;
+    this.muzzle.color = 0xffffffff;
+  }
+
   /** Mirrors the live projectile pool into particles, reusing the same objects. */
   syncProjectiles(pool: ProjectilePool): void {
     let used = 0;
@@ -73,8 +88,10 @@ export class ProjectileRenderer {
         this.balls.push(particle);
         this.ballLayer.addParticle(particle);
       }
-      particle.x = projectile.x;
-      particle.y = projectile.y;
+      // A ball only stores its lane and how far along it is; the board-space
+      // position is derived here, for drawing only.
+      particle.x = projectileX(projectile);
+      particle.y = projectileY(projectile);
       particle.scaleX = 3;
       particle.scaleY = 3;
       particle.color = this.packedColorOf(projectile.colorId);

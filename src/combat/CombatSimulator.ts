@@ -4,9 +4,8 @@ import type { Rng } from "../rng/XorShift32";
 import type { PixelWorld } from "../world/PixelWorld";
 import { VisualLODController } from "../rendering/VisualLODController";
 import { BatchExecutor } from "./BatchExecutor";
-import type { Cannon } from "./Cannon";
-import { clipSegmentToGrid } from "./clip";
-import { traverseGridDDA } from "./dda";
+import type { Cannon, CannonAim } from "./Cannon";
+import { axisLength, traverseAxis } from "./axisTraversal";
 import { ProjectilePool, type Projectile } from "./ProjectilePool";
 
 export interface ImpactEvent {
@@ -35,8 +34,8 @@ export interface CombatStats {
 export type ForeignColorPolicy = "pass-through" | "bounce";
 
 export interface CombatOptions {
-  /** Spread of a volley around the aim direction, in radians. */
-  volleySpread?: number;
+  /** Width of a volley, in lanes: the balls occupy adjacent parallel lanes. */
+  volleyLanes?: number;
   /** Above this many balls in one volley, the card goes fully batched. */
   batchThreshold?: number;
   maxProjectileLifetimeMs?: number;
@@ -46,8 +45,9 @@ export interface CombatOptions {
 /**
  * Drives the active (foreground) part of the game.
  *
- * Two regimes coexist deliberately:
- *   - exact: one logical shot is one simulated projectile walking the grid;
+ * The cannon patrols the border and fires perpendicular to its edge, so every
+ * shot stays inside a single row or column. Two regimes coexist deliberately:
+ *   - exact: one logical shot is one simulated projectile scanning its lane;
  *   - aggregate: the volley is converted straight into destruction commands,
  *     with only a sampled handful of impacts turned into visual effects.
  *
@@ -84,7 +84,7 @@ export class CombatSimulator {
     this.lod = lod;
     this.batch = new BatchExecutor(world);
     this.options = {
-      volleySpread: options.volleySpread ?? 0.22,
+      volleyLanes: options.volleyLanes ?? 1,
       batchThreshold: options.batchThreshold ?? 24,
       maxProjectileLifetimeMs: options.maxProjectileLifetimeMs ?? 4000,
       foreignColorPolicy: options.foreignColorPolicy ?? "pass-through",
@@ -112,16 +112,22 @@ export class CombatSimulator {
     this.deck.syncExhaustedColors(this.world);
 
     for (const slot of this.deck.tick(deltaMs)) {
-      this.fire(slot);
+      // An armed card holds its shot until the cannon faces a lane that still
+      // contains its colour, so no volley is ever spent on an empty lane.
+      if (this.fire(slot)) this.deck.markFired(slot);
     }
 
     this.stepProjectiles(deltaMs);
   }
 
-  private fire(slot: CardSlot): void {
+  /** Returns true when the volley was actually fired. */
+  private fire(slot: CardSlot): boolean {
     const card = slot.card;
     const target = this.deck.resolveTarget(card, this.world);
-    if (target < 0) return; // board cleared
+    if (target < 0) return false; // board cleared
+
+    const aim = this.cannon.aim();
+    if (!this.laneHasTarget(aim, card.ballCount, target)) return false;
 
     const aggregate =
       card.ballCount > this.options.batchThreshold ||
@@ -130,25 +136,25 @@ export class CombatSimulator {
 
     if (aggregate) {
       this.fireAggregate(card.ballCount * card.pierce + card.logicalBurst, target, card.damage);
-      return;
+      return true;
     }
 
-    const origin = { x: this.cannon.x, y: this.cannon.y };
-    const aim = this.cannon.aim();
-    const baseAngle = Math.atan2(aim.y, aim.x);
+    const size = axisLength(aim.axis, WORLD_WIDTH, WORLD_HEIGHT);
+    // Balls enter at the edge the cannon is standing on: there is no flight
+    // through empty space outside the board to simulate.
+    const entry = aim.direction > 0 ? 0 : size - 1;
+    const spread = Math.max(1, this.options.volleyLanes);
 
     for (let i = 0; i < card.ballCount; i++) {
-      const offset =
-        card.ballCount === 1
-          ? 0
-          : (i / (card.ballCount - 1) - 0.5) * this.options.volleySpread;
-      const angle = baseAngle + offset;
+      // Spread the volley over adjacent lanes, centred on the cannon's own.
+      const laneOffset = spread === 1 ? 0 : (i % spread) - ((spread - 1) >> 1);
+      const shot = this.cannon.aimOffset(laneOffset);
 
       const spawned = this.pool.spawn({
-        x: origin.x,
-        y: origin.y,
-        vx: Math.cos(angle),
-        vy: Math.sin(angle),
+        axis: shot.axis,
+        lane: shot.lane,
+        direction: shot.direction,
+        along: entry,
         speed: card.speed,
         colorId: target,
         damage: card.damage,
@@ -161,9 +167,26 @@ export class CombatSimulator {
       // through the batch path instead of being dropped.
       if (!spawned) {
         this.fireAggregate((card.ballCount - i) * card.pierce, target, card.damage);
-        return;
+        return true;
       }
     }
+
+    return true;
+  }
+
+  /**
+   * True when at least one lane covered by the volley still holds `colorId`.
+   * One lookup per lane in the lane index — no scanning of the board.
+   */
+  private laneHasTarget(aim: CannonAim, ballCount: number, colorId: number): boolean {
+    const spread = Math.min(Math.max(1, this.options.volleyLanes), ballCount);
+    const half = (spread - 1) >> 1;
+
+    for (let offset = -half; offset <= spread - 1 - half; offset++) {
+      const shot = offset === 0 ? aim : this.cannon.aimOffset(offset);
+      if (this.world.lanes.hasColor(shot.axis, shot.lane, colorId)) return true;
+    }
+    return false;
   }
 
   /** Converts logical hits straight into destruction, bypassing the grid walk. */
@@ -206,32 +229,25 @@ export class CombatSimulator {
       }
 
       const travel = projectile.speed * deltaSeconds;
-      const nextX = projectile.x + projectile.vx * travel;
-      const nextY = projectile.y + projectile.vy * travel;
+      const from = projectile.along;
+      const to = from + projectile.direction * travel;
+      projectile.along = to;
 
-      const clipped = clipSegmentToGrid(
-        { x0: projectile.x, y0: projectile.y, x1: nextX, y1: nextY },
-        WORLD_WIDTH,
-        WORLD_HEIGHT,
-      );
-
-      projectile.x = nextX;
-      projectile.y = nextY;
-
-      if (!clipped) {
-        // Never entered the board on this step. Only give up once the ball is
-        // heading away from it, so a shot from the orbit still gets to arrive.
-        if (this.isLeavingBoard(projectile)) this.pool.release(projectile);
+      const size = axisLength(projectile.axis, WORLD_WIDTH, WORLD_HEIGHT);
+      if (projectile.direction > 0 ? from > size - 1 : from < 0) {
+        // Ran off the far edge: the lane is finished.
+        this.pool.release(projectile);
         return;
       }
 
       let absorbed = false;
 
-      traverseGridDDA(
-        clipped.x0,
-        clipped.y0,
-        clipped.x1,
-        clipped.y1,
+      traverseAxis(
+        projectile.axis,
+        projectile.lane,
+        projectile.direction,
+        Math.floor(from),
+        Math.floor(to),
         WORLD_WIDTH,
         WORLD_HEIGHT,
         (cx, cy, index) => {
@@ -255,10 +271,12 @@ export class CombatSimulator {
             return true;
           }
 
-          // outcome === "bounce": a wrong colour deflects the ball.
+          // outcome === "bounce": a wrong colour sends the ball back down its
+          // own lane, since that is the only direction it can travel.
           if (projectile.remainingBounces > 0) {
             projectile.remainingBounces--;
-            this.deflect(projectile, cx, cy);
+            projectile.direction = projectile.direction > 0 ? -1 : 1;
+            projectile.along = (projectile.axis === "row" ? cx : cy) + projectile.direction * 0.51;
             return true;
           }
           absorbed = true;
@@ -278,27 +296,5 @@ export class CombatSimulator {
     if (cell === DEAD || cell === VOID) return "continue";
     if (cell === projectile.colorId) return "hit";
     return this.options.foreignColorPolicy === "bounce" ? "bounce" : "continue";
-  }
-
-  /**
-   * Reflects the ball off the cell it could not destroy. The normal is taken
-   * from the dominant travel axis — good enough visually, and it keeps the
-   * ball inside the play area instead of grazing along it forever.
-   */
-  private deflect(projectile: Projectile, cellX: number, cellY: number): void {
-    const dx = projectile.x - (cellX + 0.5);
-    const dy = projectile.y - (cellY + 0.5);
-    if (Math.abs(dx) > Math.abs(dy)) projectile.vx = -projectile.vx;
-    else projectile.vy = -projectile.vy;
-
-    // Nudge the ball off the surface so the next step does not re-hit it.
-    projectile.x = cellX + 0.5 + Math.sign(projectile.vx) * 0.51;
-    projectile.y = cellY + 0.5 + Math.sign(projectile.vy) * 0.51;
-  }
-
-  private isLeavingBoard(projectile: Projectile): boolean {
-    const towardsCenterX = WORLD_WIDTH / 2 - projectile.x;
-    const towardsCenterY = WORLD_HEIGHT / 2 - projectile.y;
-    return projectile.vx * towardsCenterX + projectile.vy * towardsCenterY <= 0;
   }
 }

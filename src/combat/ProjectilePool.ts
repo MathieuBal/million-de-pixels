@@ -1,18 +1,25 @@
+import type { Axis, Direction } from "./axisTraversal";
+
 /**
  * Fixed-capacity projectile pool.
  *
- * The hot path must not allocate: projectiles are recycled through a free
- * list, and iteration walks a dense `activeIds` array rather than the whole
- * capacity.
+ * A ball is confined to one lane, so its whole trajectory is a lane index, a
+ * direction and a scalar position along the axis — no velocity vector, no
+ * position vector, nothing to normalise. The hot path never allocates:
+ * projectiles are recycled through a free list and iteration walks a dense
+ * `active` array rather than the whole capacity.
  */
 export interface Projectile {
   id: number;
   active: boolean;
 
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
+  axis: Axis;
+  /** Row index when travelling along a row, column index along a column. */
+  lane: number;
+  direction: Direction;
+  /** Position along the axis, in cells. Fractional between two cells. */
+  along: number;
+  /** Travel speed, in cells per second. */
   speed: number;
 
   colorId: number;
@@ -23,6 +30,17 @@ export interface Projectile {
 
   ageMs: number;
   maxAgeMs: number;
+}
+
+export type ProjectileInit = Omit<Projectile, "id" | "active" | "ageMs">;
+
+/** Board-space position of a ball, for rendering only. */
+export function projectileX(projectile: Projectile): number {
+  return projectile.axis === "row" ? projectile.along : projectile.lane + 0.5;
+}
+
+export function projectileY(projectile: Projectile): number {
+  return projectile.axis === "row" ? projectile.lane + 0.5 : projectile.along;
 }
 
 export class ProjectilePool {
@@ -38,10 +56,10 @@ export class ProjectilePool {
       this.items[i] = {
         id: i,
         active: false,
-        x: 0,
-        y: 0,
-        vx: 0,
-        vy: 0,
+        axis: "row",
+        lane: 0,
+        direction: 1,
+        along: 0,
         speed: 0,
         colorId: 0,
         damage: 1,
@@ -59,16 +77,16 @@ export class ProjectilePool {
   }
 
   /** Returns null when the pool is saturated — the caller then batches instead. */
-  spawn(init: Omit<Projectile, "id" | "active" | "ageMs">): Projectile | null {
+  spawn(init: ProjectileInit): Projectile | null {
     const id = this.free.pop();
     if (id === undefined) return null;
 
     const p = this.items[id];
     p.active = true;
-    p.x = init.x;
-    p.y = init.y;
-    p.vx = init.vx;
-    p.vy = init.vy;
+    p.axis = init.axis;
+    p.lane = init.lane;
+    p.direction = init.direction;
+    p.along = init.along;
     p.speed = init.speed;
     p.colorId = init.colorId;
     p.damage = init.damage;

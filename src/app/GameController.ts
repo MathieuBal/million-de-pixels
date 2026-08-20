@@ -16,7 +16,7 @@ import type { ImageProcessOptions } from "../image/ImageProtocol";
 import { IdleWorkerClient } from "../idle/IdleWorkerClient";
 import { DEFAULT_MAX_OFFLINE_MS } from "../idle/IdleProtocol";
 import { SaveRepository } from "../persistence/SaveRepository";
-import type { LevelSaveV1 } from "../persistence/schema";
+import type { CurrentLevelSave } from "../persistence/schema";
 import { SAVE_SCHEMA_VERSION } from "../persistence/schema";
 import { PixelTextureRenderer } from "../rendering/PixelTextureRenderer";
 import { ProjectileRenderer } from "../rendering/ProjectileRenderer";
@@ -255,6 +255,7 @@ export class GameController {
 
     const stats = this.combat.getStats();
 
+    this.projectiles?.syncCannon(this.cannon.aim());
     this.projectiles?.syncProjectiles(this.combat.pool);
     this.projectiles?.spawnImpacts(this.combat.visibleImpacts);
     this.projectiles?.update(deltaMs);
@@ -303,7 +304,7 @@ export class GameController {
     if (!world || !deck) return;
 
     this.lastSimulatedAtEpochMs = Date.now();
-    const save: LevelSaveV1 = {
+    const save: CurrentLevelSave = {
       schemaVersion: SAVE_SCHEMA_VERSION,
       profileId: PROFILE_ID,
       levelId: this.levelId,
@@ -339,7 +340,7 @@ export class GameController {
    * frame, so the player comes back to an image that really was eaten into.
    */
   async restoreLatest(): Promise<boolean> {
-    let saved: LevelSaveV1 | null = null;
+    let saved: CurrentLevelSave | null = null;
     try {
       const all = await this.saves.listLevels(PROFILE_ID);
       saved = all.sort((a, b) => b.lastSimulatedAtEpochMs - a.lastSimulatedAtEpochMs)[0] ?? null;

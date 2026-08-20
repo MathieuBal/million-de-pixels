@@ -1,5 +1,5 @@
 import { migrate } from "./migrations";
-import type { LevelSaveV1 } from "./schema";
+import type { AnyLevelSave, CurrentLevelSave } from "./schema";
 
 const DB_NAME = "pixel-idle";
 const DB_VERSION = 1;
@@ -51,24 +51,33 @@ export class SaveRepository {
     return this.dbPromise;
   }
 
-  async putLevel(save: LevelSaveV1): Promise<void> {
+  async putLevel(save: CurrentLevelSave): Promise<void> {
     const db = await this.open();
     await run(db, STORE_LEVELS, "readwrite", (store) => store.put(save));
   }
 
-  async getLevel(profileId: string, levelId: string): Promise<LevelSaveV1 | null> {
+  async getLevel(profileId: string, levelId: string): Promise<CurrentLevelSave | null> {
     const db = await this.open();
-    const record = await run<LevelSaveV1 | undefined>(db, STORE_LEVELS, "readonly", (store) =>
+    const record = await run<AnyLevelSave | undefined>(db, STORE_LEVELS, "readonly", (store) =>
       store.get([profileId, levelId]),
     );
     if (!record) return null;
     return migrate(record);
   }
 
-  async listLevels(profileId: string): Promise<LevelSaveV1[]> {
+  async listLevels(profileId: string): Promise<CurrentLevelSave[]> {
     const db = await this.open();
-    const all = await run<LevelSaveV1[]>(db, STORE_LEVELS, "readonly", (store) => store.getAll());
-    return all.filter((save) => save.profileId === profileId);
+    const all = await run<AnyLevelSave[]>(db, STORE_LEVELS, "readonly", (store) => store.getAll());
+    // Old records are migrated on read; an unreadable one must not sink the list.
+    return all
+      .filter((save) => save.profileId === profileId)
+      .flatMap((save) => {
+        try {
+          return [migrate(save)];
+        } catch {
+          return [];
+        }
+      });
   }
 
   async deleteLevel(profileId: string, levelId: string): Promise<void> {

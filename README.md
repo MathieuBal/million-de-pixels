@@ -32,8 +32,8 @@ via une texture → faire orbiter un canon → détruire les bonnes couleurs →
 | `PixelWorld` + `ColorIndex` (swap-delete O(1)) | fait |
 | Texture R8 + shader palette | fait |
 | Throttling des uploads | fait |
-| Canon orbital | fait |
-| Clip segment + DDA | fait |
+| Canon patrouillant le cadre | fait |
+| Parcours ligne/colonne à pas fixe | fait |
 | Collision couleur + pierce/ricochet | fait |
 | Deck généré depuis les comptages | fait |
 | Cartes / upgrades / couleurs épuisées | fait |
@@ -91,10 +91,11 @@ Les gros buffers circulent en **transfert** (`postMessage` + transfer list), pas
 | Palette | 6 à 16 couleurs, `Uint8Array` d'identifiants |
 | Valeurs réservées | `254 = VOID`, `255 = DEAD` |
 | Rendu pixels | 1 texture `r8unorm` + shader palette, `scaleMode: nearest` |
-| Physique | mathématique — DDA 2D, aucun moteur physique |
+| Physique | mathématique — parcours axial à pas fixe, aucun moteur physique |
+| Tir | canon sur le cadre, perpendiculaire à son bord, une seule voie par bille |
 | Quantification | Median Cut déterministe par défaut, k-means Lab en option qualité |
 | Dithering | désactivé — les couleurs portent une signification mécanique |
-| Persistance | IndexedDB, save versionnée, index dérivés non sauvegardés |
+| Persistance | IndexedDB, save v2 versionnée, index dérivés non sauvegardés |
 | Image source | jamais persistée (seul le niveau quantifié l'est) |
 | PRNG | `xorshift32-v1`, versionné, jamais `Math.random()` |
 
@@ -105,6 +106,7 @@ Les gros buffers circulent en **transfert** (`postMessage` + transfer list), pas
 | `baseColorId`, `colorId`, `hp`, `flags` | `Uint8Array` ×4 | 4 MiB |
 | `pixelsByColor`, `slotOfPixel` | `Uint32Array` ×2 | 8 MiB |
 | Macro-tuiles 32×32 | `Uint16Array` | 32 KiB |
+| Voies (lignes + colonnes) × couleurs | `Uint16Array` | 64 KiB |
 | Texture GPU R8 | — | ≈1 MiB |
 
 Les 8 MiB d'index sont **dérivés** : reconstruits depuis `colorId` en O(N) au
@@ -117,8 +119,21 @@ contigus par couleur, avec la permutation inverse. Détruire un pixel, ou en tir
 un au hasard dans une couleur, est O(1). Rien ne parcourt jamais le million de
 cellules pour chercher une cible rouge.
 
+**Canon sur le cadre, tir sur une seule voie.** Le canon patrouille le bord de
+l'image et tire toujours perpendiculairement à son côté : chaque bille reste dans
+une seule ligne ou une seule colonne. Le parcours se réduit alors à un balayage à
+pas fixe — l'index de cellule avance d'une constante (±1 sur une ligne, ±1024 sur
+une colonne), sans flottant ni terme incrémental dans la boucle. Le clip se réduit
+à borner la position de départ et d'arrivée.
+
+**Le canon ne tire que devant une cible.** Une carte reste armée tant que le canon
+ne fait pas face à une voie contenant encore sa couleur. Répondre à « reste-t-il du
+rouge dans la ligne 412 ? » en balayant la voie coûterait 1024 lectures par
+vérification ; `LaneIndex` répond en une lecture et se met à jour en O(1) à chaque
+destruction, pour 64 KiB.
+
 **Deux régimes de simulation.** À faible puissance, un tir logique est un projectile
-simulé qui parcourt la grille en DDA. À forte puissance, la salve est convertie
+simulé qui balaye sa voie. À forte puissance, la salve est convertie
 directement en commandes de destruction et seuls quelques centaines d'impacts
 représentatifs deviennent des VFX. C'est ce qui permet aux upgrades de continuer à
 monter bien après que le renderer a cessé de pouvoir dessiner chaque bille.
@@ -156,8 +171,11 @@ cible logicielle, à refaire sur du matériel réel et sur mobile.
 
 - **Quantification** — image monochrome → 1 couleur, pas de centroïde fantôme,
   `sum(counts) + void === 1 048 576`, déterminisme entre deux exécutions.
-- **DDA** — horizontal/vertical/diagonal, pentes faibles sans cellule sautée, coins
-  exacts, segment nul, entrée depuis l'extérieur, pas de tunneling à grande vitesse.
+- **Parcours axial** — ordre des cellules dans les deux sens, index linéaire à pas
+  constant, bornes clampées, segment hors plateau, voie invalide, absorption.
+- **Canon / voies** — les quatre bords couverts, tir toujours perpendiculaire,
+  salve décalée sur des voies parallèles et clampée aux coins, occupancy sans
+  balayage, pas de sous-dépassement de compteur.
 - **ColorIndex** — `pixelsByColor[slotOfPixel[p]] === p` après 100 000 destructions
   aléatoires, double destruction refusée, VOID jamais détruit.
 - **Hors-ligne** — 8 h en une reprise ≡ 8 × 1 h avec carry et RNG préservés, sortie
@@ -165,7 +183,8 @@ cible logicielle, à refaire sur du matériel réel et sur mobile.
 - **RNG** — séquence golden verrouillée (la changer invalide toutes les saves).
 - **Deck** — chaque couleur présente obtient au moins une carte, allocation exacte
   par largest remainder, couleur dominante tempérée.
-- **Persistance** — round-trip octet par octet, migrations, saves corrompues.
+- **Persistance** — round-trip octet par octet, migration v1→v2 du canon orbital
+  vers le canon de bord, saves corrompues.
 
 `npm run e2e` couvre en plus ce que les tests unitaires ne peuvent pas atteindre :
 le chemin de rendu réel (texture R8, shader palette, packing des particules) et les
