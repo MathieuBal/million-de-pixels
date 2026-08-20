@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Un million de pixels</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23080810'/%3E%3Crect x='2' y='2' width='5' height='5' fill='%23e02828'/%3E%3Crect x='9' y='2' width='5' height='5' fill='%232850dc'/%3E%3Crect x='2' y='9' width='5' height='5' fill='%23f0d23c'/%3E%3Crect x='9' y='9' width='5' height='5' fill='%236de5b0'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="/src/ui/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="board"></canvas>
+
+      <div id="dropzone" class="overlay">
+        <div class="panel">
+          <h1>Un million de pixels</h1>
+          <p class="lede">
+            Déposez une image. Elle devient une grille de 1&nbsp;024 × 1&nbsp;024 cellules,
+            quantifiée en 6 à 16 couleurs, que votre deck doit détruire couleur par couleur.
+          </p>
+
+          <label class="file-button">
+            <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" />
+            Choisir une image
+          </label>
+
+          <div class="options">
+            <label>
+              Couleurs
+              <input id="palette-size" type="range" min="6" max="16" value="8" />
+              <output id="palette-size-value">8</output>
+            </label>
+            <label>
+              Cadrage
+              <select id="fit-mode">
+                <option value="contain">contain (silhouette)</option>
+                <option value="cover">cover (plein cadre)</option>
+                <option value="stretch">stretch</option>
+              </select>
+            </label>
+            <label>
+              Quantification
+              <select id="quantizer">
+                <option value="median-cut">Median Cut (rapide)</option>
+                <option value="median-cut+kmeans">Median Cut + k-means (qualité)</option>
+              </select>
+            </label>
+            <label class="checkbox">
+              <input id="fill-margins" type="checkbox" />
+              Million plein (marges jouables)
+            </label>
+          </div>
+
+          <p id="drop-hint" class="hint">…ou glissez-déposez le fichier ici (PNG, JPEG, WebP).</p>
+          <p id="drop-error" class="error" hidden></p>
+        </div>
+      </div>
+
+      <div id="progress" class="overlay" hidden>
+        <div class="panel">
+          <h2>Analyse de l'image</h2>
+          <ol id="stages" class="stages"></ol>
+        </div>
+      </div>
+
+      <aside id="hud" hidden>
+        <header>
+          <div class="remaining">
+            <span id="alive-count">—</span>
+            <small>/ <span id="playable-count">—</span> pixels</small>
+          </div>
+          <div class="progress-bar"><div id="progress-fill"></div></div>
+          <div class="destroyed"><span id="progress-percent">0,0 %</span> détruit</div>
+        </header>
+
+        <table id="color-table">
+          <thead>
+            <tr><th>Couleur</th><th>Restants</th><th>%</th><th>px/s</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <section id="deck-panel">
+          <h3>Deck</h3>
+          <ul id="deck-list"></ul>
+        </section>
+
+        <section id="perf-panel">
+          <h3>Profilage</h3>
+          <dl id="perf-list"></dl>
+        </section>
+
+        <p id="toast" class="toast" hidden></p>
+      </aside>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
