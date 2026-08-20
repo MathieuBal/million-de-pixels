@@ -25,19 +25,30 @@ export class DeckRuntime {
     return this.slots.length;
   }
 
-  /** Advances cooldowns and returns the slots that fire on this tick. */
+  /**
+   * Advances cooldowns and returns the slots that are armed.
+   *
+   * The cooldown is NOT reset here: a card stays armed until it actually
+   * fires, because the cannon only shoots when it passes in front of a lane
+   * holding the card's colour. The caller confirms with `markFired`.
+   */
   tick(deltaMs: number): CardSlot[] {
     const ready: CardSlot[] = [];
     for (const slot of this.slots) {
-      slot.cooldownMs -= deltaMs;
+      // Clamping at zero instead of accumulating debt: a long pause must not
+      // produce a burst of catch-up volleys when the tab regains focus.
+      if (slot.cooldownMs > 0) slot.cooldownMs -= deltaMs;
       if (slot.cooldownMs <= 0) {
-        // Clamp instead of accumulating debt: a long pause must not produce a
-        // burst of catch-up volleys the moment the tab regains focus.
-        slot.cooldownMs = slot.card.fireIntervalMs;
+        slot.cooldownMs = 0;
         ready.push(slot);
       }
     }
     return ready;
+  }
+
+  /** Consumes an armed slot once its volley actually left the cannon. */
+  markFired(slot: CardSlot): void {
+    slot.cooldownMs = slot.card.fireIntervalMs;
   }
 
   /**

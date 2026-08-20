@@ -17,7 +17,15 @@ import {
 
 function makeWorld(paletteSize = 4): PixelWorld {
   const colorId = new Uint8Array(PIXEL_COUNT);
-  for (let i = 0; i < PIXEL_COUNT; i++) colorId[i] = i % paletteSize;
+  // Diagonal stripes: every row AND every column contains every colour, so the
+  // cannon always has a valid target whatever edge it is on. (A plain `i %
+  // paletteSize` would make each column monochrome, since 1024 is divisible by
+  // 4 — the cannon would then correctly hold fire most of the time.)
+  for (let i = 0; i < PIXEL_COUNT; i++) {
+    const x = i % WORLD_WIDTH;
+    const y = (i / WORLD_WIDTH) | 0;
+    colorId[i] = (x + y) % paletteSize;
+  }
   const palette: PaletteEntry[] = Array.from({ length: paletteSize }, (_, id) => ({
     id,
     r: id * 40,
@@ -113,10 +121,10 @@ describe("ProjectilePool", () => {
 
   function base() {
     return {
-      x: 0,
-      y: 0,
-      vx: 1,
-      vy: 0,
+      axis: "row" as const,
+      lane: 0,
+      direction: 1 as const,
+      along: 0,
       speed: 100,
       colorId: 0,
       damage: 1,
@@ -165,6 +173,7 @@ describe("CombatSimulator", () => {
     const sim = simulator(world, [card]);
     sim.update(16, 0);
 
+
     const stats = sim.getStats();
     expect(stats.batchedCommands).toBeGreaterThan(0);
     expect(stats.logicalImpacts).toBeGreaterThan(0);
@@ -194,6 +203,55 @@ describe("CombatSimulator", () => {
 
     expect(logical).toBeGreaterThan(10_000);
     expect(visual).toBeLessThan(logical / 4);
+  });
+
+  it("holds fire while the cannon faces a lane without its colour", () => {
+    // Column-striped board: column x is entirely colour x % 4.
+    const colorId = new Uint8Array(PIXEL_COUNT);
+    for (let i = 0; i < PIXEL_COUNT; i++) colorId[i] = (i % WORLD_WIDTH) % 4;
+    const palette: PaletteEntry[] = Array.from({ length: 4 }, (_, id) => ({
+      id,
+      r: id * 40,
+      g: 100,
+      b: 200,
+      a: 255,
+      count: PIXEL_COUNT / 4,
+    }));
+    const world = PixelWorld.create(palette, colorId);
+
+    const deck = new DeckRuntime([makeCard(1, 0)]);
+    // Parked on column 0, which holds only colour 0.
+    const cannon = new Cannon({ position: 0, speed: 0 });
+    const sim = new CombatSimulator(world, deck, cannon, new XorShift32(1), {}, new VisualLODController());
+
+    sim.update(16, 0);
+    expect(sim.pool.activeCount).toBe(0);
+    expect(world.destroyedCount()).toBe(0);
+
+    // Move it in front of column 1, which is colour 1: the held shot goes off.
+    cannon.position = 1;
+    sim.update(16, 16);
+    expect(sim.pool.activeCount).toBeGreaterThan(0);
+  });
+
+  it("fires down the lane it faces, never across the board", () => {
+    const world = makeWorld();
+    const deck = new DeckRuntime([makeCard(0, 0)]);
+    const cannon = new Cannon({ position: 0, speed: 0 });
+    const sim = new CombatSimulator(world, deck, cannon, new XorShift32(2), {}, new VisualLODController());
+
+    sim.update(16, 0);
+    sim.pool.forEachActive((p) => {
+      expect(p.axis).toBe("column");
+      expect(p.lane).toBe(0);
+      expect(p.direction).toBe(1);
+    });
+
+    // Every destroyed cell must sit in column 0.
+    for (let i = 0; i < 40; i++) sim.update(16, 16 * (i + 1));
+    for (let i = 0; i < PIXEL_COUNT; i++) {
+      if (world.colorId[i] === DEAD) expect(i % WORLD_WIDTH).toBe(0);
+    }
   });
 
   it("stops firing once the board is empty instead of throwing", () => {

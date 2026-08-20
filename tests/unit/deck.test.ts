@@ -98,18 +98,36 @@ describe("DeckRuntime", () => {
     return PixelWorld.create(palette, colorId);
   }
 
-  it("fires immediately, then respects the interval", () => {
+  it("fires immediately, then respects the interval once consumed", () => {
     const deck = new DeckRuntime([makeCard(0, 0)]);
-    // A fresh deck opens fire on the first tick rather than idling one cooldown.
-    expect(deck.tick(16)).toHaveLength(1);
+    // A fresh deck is armed on the first tick rather than idling one cooldown.
+    const [slot] = deck.tick(16);
+    expect(slot).toBeDefined();
+
+    deck.markFired(slot);
     expect(deck.tick(100)).toHaveLength(0);
     expect(deck.tick(700)).toHaveLength(1);
   });
 
+  it("stays armed until the volley actually leaves the cannon", () => {
+    const deck = new DeckRuntime([makeCard(0, 0)]);
+    // The cannon may face a lane with no matching pixel for several frames;
+    // the card must not lose its shot in the meantime.
+    expect(deck.tick(16)).toHaveLength(1);
+    expect(deck.tick(16)).toHaveLength(1);
+    expect(deck.tick(16)).toHaveLength(1);
+
+    deck.markFired(deck.slots[0]);
+    expect(deck.tick(16)).toHaveLength(0);
+  });
+
   it("does not burst catch-up volleys after a long stall", () => {
     const deck = new DeckRuntime([makeCard(0, 0)]);
-    deck.tick(16); // consume the opening volley
-    expect(deck.tick(60_000)).toHaveLength(1);
+    deck.markFired(deck.tick(16)[0]); // consume the opening volley
+
+    const ready = deck.tick(60_000);
+    expect(ready).toHaveLength(1);
+    deck.markFired(ready[0]);
     expect(deck.tick(100)).toHaveLength(0);
   });
 
