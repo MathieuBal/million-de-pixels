@@ -12,15 +12,17 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { quadrantsPng } from "../../scripts/makeFixturePng.mjs";
+import { posterPng } from "../../scripts/makePosterPng.mjs";
 
 const PORT = 4173;
 const URL = `http://localhost:${PORT}/`;
 const CHROMIUM = process.env.CHROMIUM_PATH ?? undefined;
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "pixel-idle-"));
-const fixture = path.join(tmp, "quadrants.png");
-fs.writeFileSync(fixture, quadrantsPng(256));
+// A poster-like image: flat fields, fine hatching, a few tiny details. Closer
+// to what players actually drop in than four solid quadrants.
+const fixture = path.join(tmp, "poster.png");
+fs.writeFileSync(fixture, posterPng());
 
 const server = spawn("npx", ["vite", "preview", "--port", String(PORT)], {
   stdio: "ignore",
@@ -49,55 +51,75 @@ try {
   });
 
   await page.goto(URL, { waitUntil: "networkidle" });
-  check("boots without a compatibility wall", (await page.locator("h1", { hasText: "Incompatible" }).count()) === 0);
+  check("demarre sans mur de compatibilite", (await page.locator("h1", { hasText: "Incompatible" }).count()) === 0);
 
   console.log("\n— import —");
   await page.setInputFiles("#file-input", fixture);
   await page.waitForSelector("#hud:not([hidden])", { timeout: 60000 });
 
+  // The board always holds 1 048 576 cells; a non-square image letterboxes, so
+  // the *playable* count is lower — the margins are VOID, not missing.
   const playable = digits(await page.locator("#playable-count").innerText());
-  check("board holds one million cells", playable === 1_048_576, String(playable));
-  check("palette rows rendered", (await page.locator("#color-table tbody tr").count()) > 0);
-  check("deck generated", (await page.locator("#deck-list li").count()) > 0);
+  check(
+    "la silhouette jouable tient dans le million de cellules",
+    playable > 0 && playable <= 1_048_576,
+    `${playable} / 1 048 576`,
+  );
+  check("palette detectee", (await page.locator("#color-table tbody tr").count()) > 0);
+  check("file de canons remplie", (await page.locator("#queue-list .load").count()) > 0);
 
-  console.log("\n— exact regime —");
+  console.log("\n— un canon —");
   const before = digits(await page.locator("#alive-count").innerText());
+  await page.locator("#queue-list .load button").first().click();
+  await page.waitForTimeout(400);
+  check("le canon rejoint le rail", firstNumber(await page.locator("#rail-count").innerText()) >= 1);
+
   await page.waitForTimeout(5000);
   const after = digits(await page.locator("#alive-count").innerText());
-  check("pixels are actually destroyed", after < before, `${before} → ${after}`);
-  const exact = await perf(page);
-  check("projectiles are individually simulated", Number(digits(exact["Projectiles actifs"])) > 0, exact["Projectiles actifs"]);
-  table(exact);
+  check("des pixels sont reellement detruits", after < before, `${before} → ${after}`);
 
-  console.log("\n— aggregate regime —");
-  for (let round = 0; round < 8; round++) {
-    for (const button of await page.locator("#deck-list button").all()) await button.click();
-  }
-  await page.waitForTimeout(2000);
+  const single = await perf(page);
+  table(single);
 
-  let peakLogical = 0;
-  let peakVisual = 0;
-  for (let i = 0; i < 6; i++) {
-    const p = await perf(page);
-    peakLogical = Math.max(peakLogical, digits(p["Impacts logiques/s"]));
-    peakVisual = Math.max(peakVisual, digits(p["Impacts visuels/s"]));
-    await page.waitForTimeout(700);
+  console.log("\n— plusieurs canons —");
+  let launches = 0;
+  for (let i = 0; i < 5; i++) {
+    const button = page.locator("#queue-list .load button:not([disabled])").first();
+    if ((await button.count()) === 0) break;
+    await button.click();
+    launches++;
+    await page.waitForTimeout(120);
   }
+  const rail = firstNumber(await page.locator("#rail-count").innerText());
+  check("plusieurs canons tournent ensemble", rail > 1, `${rail} canons`);
+  check("le rail refuse un sixieme canon", rail <= 5, `${rail} canons`);
+
+  await page.waitForTimeout(6000);
   const loaded = await perf(page);
   table(loaded);
-  check("logical throughput exceeds 10k/s", peakLogical > 10_000, `${peakLogical}/s`);
-  check("VFX stay within budget", peakVisual < 1500, `${peakVisual}/s`);
-  check("VFX decoupled from logic", peakVisual < peakLogical / 5, `1 : ${Math.round(peakLogical / Math.max(1, peakVisual))}`);
-  check("simulation stays under 4 ms/frame", parseFloat(loaded["Simulation"]) < 4, loaded["Simulation"]);
 
-  console.log("\n— persistence & offline —");
+  // The rule the whole design rests on, measured end to end: every block that
+  // disappeared cost one round, so the total can never exceed the rounds ever
+  // committed to the rail. A per-second readout cannot show this — balls fired
+  // in one sampling window land in the next — so it is checked cumulatively.
+  const destroyedTotal = before - digits(await page.locator("#alive-count").innerText());
+  const roundsCommitted = (launches + 1) * 40;
+  check(
+    "un tir ne detruit jamais plus d'un bloc",
+    destroyedTotal <= roundsCommitted,
+    `${destroyedTotal} blocs pour ${roundsCommitted} billes engagees`,
+  );
+  check("la simulation reste sous 4 ms/frame", parseFloat(loaded["Simulation"]) < 4, loaded["Simulation"]);
+  check("les canons vides quittent le rail", firstNumber(await page.locator("#rail-count").innerText()) <= rail);
+
+  console.log("\n— persistance et hors-ligne —");
   const beforeReload = digits(await page.locator("#alive-count").innerText());
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForSelector("#hud:not([hidden])", { timeout: 60000 });
   const afterReload = digits(await page.locator("#alive-count").innerText());
-  check("level restored from IndexedDB", afterReload > 0 && afterReload <= beforeReload, `${beforeReload} → ${afterReload}`);
+  check("niveau restaure depuis IndexedDB", afterReload > 0 && afterReload <= beforeReload, `${beforeReload} → ${afterReload}`);
 
-  check("no console errors", errors.length === 0, errors.join(" | "));
+  check("aucune erreur console", errors.length === 0, errors.join(" | "));
 
   await browser.close();
 } finally {
@@ -110,6 +132,12 @@ process.exit(failures.length === 0 ? 0 : 1);
 
 function digits(text) {
   return Number(text.replace(/[^\d]/g, "")) || 0;
+}
+
+/** First number of a "3 / 5" style readout. */
+function firstNumber(text) {
+  const match = text.replace(/\u202f|\u00a0/g, "").match(/\d+/);
+  return match ? Number(match[0]) : 0;
 }
 
 async function perf(page) {

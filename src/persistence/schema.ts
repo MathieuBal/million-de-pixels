@@ -1,9 +1,10 @@
 import type { PaletteEntry } from "../core/constants";
-import type { ColorCard } from "../deck/cards";
+import type { ActiveCannonState } from "../cannon/ActiveCannon";
+import type { CannonLoad } from "../cannon/CannonLoad";
 import type { CannonState } from "../combat/Cannon";
 import type { RngAlgorithm } from "../rng/XorShift32";
 
-export const SAVE_SCHEMA_VERSION = 2;
+export const SAVE_SCHEMA_VERSION = 3;
 
 /** Cannon state before the cannon was constrained to the board's edges. */
 export interface OrbitalCannonStateV1 {
@@ -27,7 +28,6 @@ interface LevelSaveBase {
   hp: ArrayBuffer;
   flags: ArrayBuffer;
 
-  deck: ColorCard[];
 
   rngAlgorithm: RngAlgorithm;
   rngState: number;
@@ -53,7 +53,17 @@ export interface LevelSaveV1 extends LevelSaveBase {
 export interface LevelSaveV2 extends LevelSaveBase {
   schemaVersion: 2;
   cannon: CannonState;
+  /** Deck of the periodic-volley model, dropped in v3. */
+  deck?: unknown[];
 }
 
-export type CurrentLevelSave = LevelSaveV2;
-export type AnyLevelSave = LevelSaveV1 | LevelSaveV2;
+export interface LevelSaveV3 extends LevelSaveBase {
+  schemaVersion: 3;
+  /** Loads waiting in the visible queue. */
+  loads: CannonLoad[];
+  /** Cannons currently on the rail, with what is left of their stock. */
+  cannons: ActiveCannonState[];
+}
+
+export type CurrentLevelSave = LevelSaveV3;
+export type AnyLevelSave = LevelSaveV1 | LevelSaveV2 | LevelSaveV3;

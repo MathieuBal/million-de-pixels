@@ -1,4 +1,5 @@
 import type { GameController } from "../app/GameController";
+import { MAX_ACTIVE_CANNONS } from "../combat/CombatSimulator";
 import type { Milestone } from "../app/milestones";
 import { cssColor, formatCount, formatDuration, formatPercent } from "./format";
 
@@ -16,7 +17,9 @@ export class Hud {
   private readonly progressFill = document.getElementById("progress-fill") as HTMLElement;
   private readonly progressPercent = document.getElementById("progress-percent") as HTMLElement;
   private readonly colorBody = document.querySelector("#color-table tbody") as HTMLElement;
-  private readonly deckList = document.getElementById("deck-list") as HTMLElement;
+  private readonly queueList = document.getElementById("queue-list") as HTMLElement;
+  private readonly cannonList = document.getElementById("cannon-list") as HTMLElement;
+  private readonly railCount = document.getElementById("rail-count") as HTMLElement;
   private readonly perfList = document.getElementById("perf-list") as HTMLElement;
   private readonly toast = document.getElementById("toast") as HTMLElement;
 
@@ -27,7 +30,7 @@ export class Hud {
 
   show(): void {
     this.root.hidden = false;
-    this.renderDeck();
+    this.renderQueue();
   }
 
   hide(): void {
@@ -71,6 +74,8 @@ export class Hud {
     this.progressPercent.textContent = formatPercent(progress);
 
     this.renderColors(world.paletteSize);
+    this.renderCannons();
+    this.renderQueue();
     this.renderPerf();
   }
 
@@ -124,37 +129,69 @@ export class Hud {
     }
   }
 
-  renderDeck(): void {
-    const deck = this.game.getDeck();
+  /**
+   * The queue is the only decision the player makes: which colour to send in
+   * now. Slots show the colour and the stock, and grey out when the rail is
+   * full rather than disappearing — the choice is still worth reading.
+   */
+  renderQueue(): void {
+    const queue = this.game.getQueue();
     const world = this.game.getWorld();
-    if (!deck || !world) return;
+    const combat = this.game.getCombat();
+    if (!queue || !world) return;
 
-    this.deckList.replaceChildren();
-    for (const slot of deck.slots) {
-      const card = slot.card;
-      const entry = world.palette[card.colorId];
+    this.queueList.replaceChildren();
+
+    for (const load of queue.visible) {
+      const entry = world.palette[load.colorId];
       const li = document.createElement("li");
-
-      const label = document.createElement("span");
-      label.innerHTML =
-        `<span class="swatch" style="background:${cssColor(entry.r, entry.g, entry.b)}"></span>` +
-        `#${card.colorId} · niv.${card.level} · ${card.ballCount}×` +
-        (card.rarity !== "commune"
-          ? ` <span class="rarity r-${card.rarity}">${card.rarity}</span>`
-          : "") +
-        (card.prismatic ? ` <span class="prismatic">prismatique</span>` : "");
+      li.className = "load";
+      li.dataset.disabled = String(!(combat?.hasFreeSlot ?? false));
 
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = "Améliorer";
+      button.disabled = !(combat?.hasFreeSlot ?? false);
+      button.innerHTML =
+        `<span class="swatch" style="background:${cssColor(entry.r, entry.g, entry.b)}"></span>` +
+        `<span class="ammo">${load.ammo}</span>`;
+      button.title = `Lancer un canon #${load.colorId} chargé de ${load.ammo} billes`;
       button.addEventListener("click", () => {
-        this.game.upgradeCard(card.id);
-        this.renderDeck();
+        if (this.game.launch(load.id)) this.renderQueue();
       });
 
-      li.append(label, button);
-      this.deckList.appendChild(li);
+      li.appendChild(button);
+      this.queueList.appendChild(li);
     }
+
+    if (queue.visible.length === 0) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "Plus aucune couleur à charger.";
+      this.queueList.appendChild(li);
+    }
+  }
+
+  /** Cannons currently on the rail, with what is left of their stock. */
+  private renderCannons(): void {
+    const combat = this.game.getCombat();
+    const world = this.game.getWorld();
+    if (!combat || !world) return;
+
+    const cannons = combat.activeCannons;
+    this.cannonList.replaceChildren();
+
+    for (const cannon of cannons) {
+      const entry = world.palette[cannon.colorId];
+      const li = document.createElement("li");
+      li.innerHTML =
+        `<span class="swatch" style="background:${cssColor(entry.r, entry.g, entry.b)}"></span>` +
+        `<span class="ammo">${cannon.ammo}<small>/${cannon.maxAmmo}</small></span>` +
+        `<span class="bar"><i style="width:${(cannon.ammo / cannon.maxAmmo) * 100}%;` +
+        `background:${cssColor(entry.r, entry.g, entry.b)}"></i></span>`;
+      this.cannonList.appendChild(li);
+    }
+
+    this.railCount.textContent = `${cannons.length} / ${MAX_ACTIVE_CANNONS}`;
   }
 
   private renderPerf(): void {
@@ -166,11 +203,11 @@ export class Hud {
       ["FPS", profiler.fps.toFixed(0)],
       ["p95 frame", `${profiler.p95FrameMs.toFixed(1)} ms`],
       ["Simulation", `${profiler.meanSimMs.toFixed(2)} ms`],
-      ["Impacts logiques/s", formatCount(profiler.logicalImpactsPerSecond)],
-      ["Impacts visuels/s", formatCount(profiler.visualImpactsPerSecond)],
-      ["Pixels détruits/s", formatCount(profiler.destroyedPerSecond)],
-      ["Projectiles actifs", formatCount(stats?.activeProjectiles ?? 0)],
-      ["Stride VFX", `1/${combat?.lod.currentStride ?? 1}`],
+      ["Canons sur le rail", formatCount(stats?.activeCannons ?? 0)],
+      ["Billes en vol", formatCount(stats?.activeProjectiles ?? 0)],
+      ["Tirs/s", formatCount(profiler.logicalImpactsPerSecond)],
+      ["Blocs détruits/s", formatCount(profiler.destroyedPerSecond)],
+      ["Tirs perdus", formatCount(stats?.misses ?? 0)],
     ];
 
     this.perfList.replaceChildren();

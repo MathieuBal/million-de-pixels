@@ -40,7 +40,7 @@ export class ProjectileRenderer {
 
   private dotTexture: Texture;
   private palette: PaletteEntry[];
-  private muzzle: Particle | null = null;
+  private readonly muzzles: Particle[] = [];
 
   constructor(renderer: Renderer, palette: PaletteEntry[], private readonly maxSparks = 1200) {
     this.palette = palette;
@@ -64,17 +64,31 @@ export class ProjectileRenderer {
     return (((alpha << 24) | (entry.b << 16) | (entry.g << 8) | entry.r) >>> 0);
   }
 
-  /** Draws the cannon at its current position on the border. */
-  syncCannon(aim: CannonAim): void {
-    if (!this.muzzle) {
-      this.muzzle = new Particle({ texture: this.dotTexture, anchorX: 0.5, anchorY: 0.5 });
-      this.ballLayer.addParticle(this.muzzle);
+  /**
+   * Draws every cannon currently on the rail, in its own colour, so the player
+   * can see one coming: "the blue one is about to reach the bottom".
+   */
+  syncCannons(aims: ReadonlyArray<{ aim: CannonAim; colorId: number }>): void {
+    while (this.muzzles.length < aims.length) {
+      const particle = new Particle({ texture: this.dotTexture, anchorX: 0.5, anchorY: 0.5 });
+      this.muzzles.push(particle);
+      this.ballLayer.addParticle(particle);
     }
-    this.muzzle.x = aim.x;
-    this.muzzle.y = aim.y;
-    this.muzzle.scaleX = aim.axis === "column" ? 2.5 : 5;
-    this.muzzle.scaleY = aim.axis === "column" ? 5 : 2.5;
-    this.muzzle.color = 0xffffffff;
+
+    for (let i = 0; i < this.muzzles.length; i++) {
+      const muzzle = this.muzzles[i];
+      const entry = aims[i];
+      if (!entry) {
+        muzzle.scaleX = 0;
+        muzzle.scaleY = 0;
+        continue;
+      }
+      muzzle.x = entry.aim.x;
+      muzzle.y = entry.aim.y;
+      muzzle.scaleX = entry.aim.axis === "column" ? 3 : 6;
+      muzzle.scaleY = entry.aim.axis === "column" ? 6 : 3;
+      muzzle.color = this.packedColorOf(entry.colorId);
+    }
   }
 
   /** Mirrors the live projectile pool into particles, reusing the same objects. */
@@ -92,8 +106,8 @@ export class ProjectileRenderer {
       // position is derived here, for drawing only.
       particle.x = projectileX(projectile);
       particle.y = projectileY(projectile);
-      particle.scaleX = 3;
-      particle.scaleY = 3;
+      particle.scaleX = 2.5;
+      particle.scaleY = 2.5;
       particle.color = this.packedColorOf(projectile.colorId);
       used++;
     });

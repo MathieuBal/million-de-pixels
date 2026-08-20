@@ -136,25 +136,57 @@ td:first-child { text-align: left; }
 }
 tr[data-exhausted="true"] { opacity: 0.45; }
 
-#deck-list { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 6px; }
-#deck-list li {
+#queue-list, #cannon-list {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+}
+
+/* The queue is a row of slots: the whole offer has to be readable at a glance. */
+#queue-list { display: flex; gap: 6px; flex-wrap: wrap; }
+#queue-list .load button {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
+  gap: 4px;
+  width: 52px;
+  padding: 8px 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+#queue-list .load button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(109, 229, 176, 0.1);
+}
+#queue-list .load button:disabled { opacity: 0.35; cursor: not-allowed; }
+#queue-list .load .swatch { width: 22px; height: 22px; margin: 0; }
+#queue-list .empty { color: var(--muted); font-size: 0.8rem; }
+.ammo { font-variant-numeric: tabular-nums; font-weight: 600; }
+.ammo small { color: var(--muted); font-weight: 400; }
+
+#cannon-list { display: grid; gap: 5px; }
+#cannon-list li {
+  display: grid;
+  grid-template-columns: auto 3.4rem 1fr;
+  align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
 }
-#deck-list button {
-  border: 0;
-  border-radius: 5px;
-  padding: 4px 8px;
-  background: var(--accent);
-  color: #062018;
-  font-weight: 600;
-  cursor: pointer;
+#cannon-list .bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
 }
+#cannon-list .bar i { display: block; height: 100%; }
+.rail-count { float: right; font-variant-numeric: tabular-nums; }
+
 .prismatic { color: var(--accent); font-size: 0.75rem; }
 
 #perf-list { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 0; color: var(--muted); font-variant-numeric: tabular-nums; }

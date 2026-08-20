@@ -47,7 +47,7 @@ async function boot(): Promise<void> {
       }
     },
     onProgress: ({ stage, progress }) => progressPanel.update(stage, progress),
-    onLevelReady: () => hud.renderDeck(),
+    onLevelReady: () => hud.renderQueue(),
     onMilestone: (milestone) => hud.announceMilestone(milestone),
     onOfflineReport: (report) => hud.announceOffline(report.elapsedMs, report.totalDestroyed),
     onError: (message) => {
