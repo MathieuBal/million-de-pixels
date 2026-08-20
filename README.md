@@ -33,6 +33,8 @@ via une texture → faire orbiter un canon → détruire les bonnes couleurs →
 | Texture R8 + shader palette | fait |
 | Throttling des uploads | fait |
 | Canon patrouillant le cadre | fait |
+| Caméra : zoom molette/pincement, pan, vue d'ensemble | fait |
+| Habillage jeu portrait 430×932 (3 écrans) | fait |
 | Parcours ligne/colonne à pas fixe | fait |
 | Collision couleur + pierce/ricochet | fait |
 | Deck généré depuis les comptages | fait |

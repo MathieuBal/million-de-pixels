@@ -3,44 +3,37 @@ import type { Axis, Direction } from "./axisTraversal";
 /**
  * Fixed-capacity projectile pool.
  *
- * A ball is confined to one lane, so its whole trajectory is a lane index, a
- * direction and a scalar position along the axis — no velocity vector, no
- * position vector, nothing to normalise. The hot path never allocates:
- * projectiles are recycled through a free list and iteration walks a dense
- * `active` array rather than the whole capacity.
+ * A ball is one round in flight: a lane, a direction, a position along it, and
+ * the cannon that owes it. It destroys at most one block — there is no pierce,
+ * no bounce and no burst, because a round is a pixel.
  */
 export interface Projectile {
   id: number;
   active: boolean;
 
+  /** Cannon that fired it, so the spent round is charged to the right stock. */
+  cannonId: string;
+
+  colorId: number;
+
   axis: Axis;
-  /** Row index when travelling along a row, column index along a column. */
   lane: number;
   direction: Direction;
   /** Position along the axis, in cells. Fractional between two cells. */
-  along: number;
+  position: number;
   /** Travel speed, in cells per second. */
   speed: number;
-
-  colorId: number;
-  damage: number;
-
-  remainingPierces: number;
-  remainingBounces: number;
-
-  ageMs: number;
-  maxAgeMs: number;
 }
 
-export type ProjectileInit = Omit<Projectile, "id" | "active" | "ageMs">;
+export type ProjectileInit = Omit<Projectile, "id" | "active">;
 
 /** Board-space position of a ball, for rendering only. */
 export function projectileX(projectile: Projectile): number {
-  return projectile.axis === "row" ? projectile.along : projectile.lane + 0.5;
+  return projectile.axis === "row" ? projectile.position : projectile.lane + 0.5;
 }
 
 export function projectileY(projectile: Projectile): number {
-  return projectile.axis === "row" ? projectile.lane + 0.5 : projectile.along;
+  return projectile.axis === "row" ? projectile.lane + 0.5 : projectile.position;
 }
 
 export class ProjectilePool {
@@ -49,24 +42,20 @@ export class ProjectilePool {
   private readonly free: number[] = [];
   private readonly active: number[] = [];
 
-  constructor(capacity = 2048) {
+  constructor(capacity = 512) {
     this.capacity = capacity;
     this.items = new Array(capacity);
     for (let i = capacity - 1; i >= 0; i--) {
       this.items[i] = {
         id: i,
         active: false,
+        cannonId: "",
+        colorId: 0,
         axis: "row",
         lane: 0,
         direction: 1,
-        along: 0,
+        position: 0,
         speed: 0,
-        colorId: 0,
-        damage: 1,
-        remainingPierces: 0,
-        remainingBounces: 0,
-        ageMs: 0,
-        maxAgeMs: 0,
       };
       this.free.push(i);
     }
@@ -76,24 +65,19 @@ export class ProjectilePool {
     return this.active.length;
   }
 
-  /** Returns null when the pool is saturated — the caller then batches instead. */
   spawn(init: ProjectileInit): Projectile | null {
     const id = this.free.pop();
     if (id === undefined) return null;
 
     const p = this.items[id];
     p.active = true;
+    p.cannonId = init.cannonId;
+    p.colorId = init.colorId;
     p.axis = init.axis;
     p.lane = init.lane;
     p.direction = init.direction;
-    p.along = init.along;
+    p.position = init.position;
     p.speed = init.speed;
-    p.colorId = init.colorId;
-    p.damage = init.damage;
-    p.remainingPierces = init.remainingPierces;
-    p.remainingBounces = init.remainingBounces;
-    p.ageMs = 0;
-    p.maxAgeMs = init.maxAgeMs;
 
     this.active.push(id);
     return p;

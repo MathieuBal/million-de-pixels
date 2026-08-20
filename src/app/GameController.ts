@@ -1,5 +1,4 @@
 import { Application, Container } from "pixi.js";
-import { Cannon } from "../combat/Cannon";
 import { CombatSimulator } from "../combat/CombatSimulator";
 import {
   DEFAULT_ALPHA_THRESHOLD,
@@ -8,9 +7,11 @@ import {
   WORLD_WIDTH,
   type PaletteEntry,
 } from "../core/constants";
-import { deckSizeFor, generateDeck } from "../deck/DeckGenerator";
-import { DeckRuntime } from "../deck/DeckRuntime";
-import type { ColorCard } from "../deck/cards";
+
+import { ActiveCannon, type ActiveCannonState } from "../cannon/ActiveCannon";
+import { CannonLoadGenerator, type CannonLoad } from "../cannon/CannonLoad";
+import { CannonQueue } from "../cannon/CannonQueue";
+import { ColorAmmoReserve } from "../cannon/ColorAmmoReserve";
 import { ImageWorkerClient, type ImageProgress } from "../image/ImageWorkerClient";
 import type { ImageProcessOptions } from "../image/ImageProtocol";
 import { IdleWorkerClient } from "../idle/IdleWorkerClient";
@@ -19,6 +20,7 @@ import { SaveRepository } from "../persistence/SaveRepository";
 import type { CurrentLevelSave } from "../persistence/schema";
 import { SAVE_SCHEMA_VERSION } from "../persistence/schema";
 import { PixelTextureRenderer } from "../rendering/PixelTextureRenderer";
+import { Viewport, type ScreenRect } from "../rendering/Viewport";
 import { ProjectileRenderer } from "../rendering/ProjectileRenderer";
 import {
   DESKTOP_BUDGET,
@@ -44,6 +46,11 @@ export interface OfflineReport {
 export interface GameEvents {
   onPhase?: (phase: GamePhase) => void;
   onProgress?: (progress: ImageProgress) => void;
+  /**
+   * The level is built but not running: the player gets to see what their
+   * image became before choosing to start.
+   */
+  onLevelPrepared?: (palette: PaletteEntry[], colorId: Uint8Array, width: number) => void;
   onLevelReady?: (world: PixelWorld) => void;
   onMilestone?: (milestone: Milestone) => void;
   onOfflineReport?: (report: OfflineReport) => void;
@@ -52,8 +59,6 @@ export interface GameEvents {
 
 const PROFILE_ID = "local";
 const AUTOSAVE_INTERVAL_MS = 10_000;
-/** Keeps the board clear of the HUD panel; mirrors #hud in styles.css. */
-const HUD_WIDTH = 352;
 
 /**
  * Owns the whole session: import, run, autosave, offline catch-up.
@@ -65,6 +70,7 @@ export class GameController {
   readonly app: Application;
   readonly boardLayer = new Container();
   readonly profiler = new Profiler();
+  readonly viewport = new Viewport();
 
   private readonly imageClient = new ImageWorkerClient();
   private readonly idleClient = new IdleWorkerClient();
@@ -72,8 +78,8 @@ export class GameController {
   private readonly lod: VisualLODController;
 
   private world: PixelWorld | null = null;
-  private deck: DeckRuntime | null = null;
-  private cannon = new Cannon();
+  private reserve: ColorAmmoReserve | null = null;
+  private queue: CannonQueue | null = null;
   private combat: CombatSimulator | null = null;
   private board: PixelTextureRenderer | null = null;
   private projectiles: ProjectileRenderer | null = null;
@@ -88,6 +94,9 @@ export class GameController {
   private lastSimulatedAtEpochMs = Date.now();
 
   private phase: GamePhase = "idle";
+  private prepared: PixelWorld | null = null;
+  /** The opening framing needs a real play area, which arrives a frame later. */
+  private needsFraming = false;
   private saveDirty = false;
   private lastAutosaveMs = 0;
   private detachContextHandler: (() => void) | null = null;
@@ -111,8 +120,19 @@ export class GameController {
     return this.world;
   }
 
-  getDeck(): DeckRuntime | null {
-    return this.deck;
+  getQueue(): CannonQueue | null {
+    return this.queue;
+  }
+
+  getReserve(): ColorAmmoReserve | null {
+    return this.reserve;
+  }
+
+  /** Spends a queued load: it leaves the queue and joins the rail. */
+  launch(loadId: string): boolean {
+    const launched = this.combat?.launch(loadId) ?? null;
+    if (launched) this.saveDirty = true;
+    return launched !== null;
   }
 
   getCombat(): CombatSimulator | null {
@@ -159,39 +179,61 @@ export class GameController {
       this.rng = new XorShift32(hashString(file.name + file.size) || 0x12345678);
       this.fractionalCarry = new Array(palette.length).fill(0);
 
-      const world = PixelWorld.create(palette, colorId);
-      const deck = new DeckRuntime(
-        generateDeck(palette, { deckSize: deckSizeFor(palette.length) }),
-      );
-
-      this.startLevel(world, deck, new Cannon());
-      this.saveDirty = true;
-      await this.save();
+      this.prepared = PixelWorld.create(palette, colorId);
+      this.events.onLevelPrepared?.(palette, this.prepared.colorId, this.prepared.width);
     } catch (error) {
       this.setPhase("idle");
       this.events.onError?.(error instanceof Error ? error.message : String(error));
     }
   }
 
-  private startLevel(world: PixelWorld, deck: DeckRuntime, cannon: Cannon): void {
+  /** Starts the level the last import prepared. */
+  startPreparedLevel(): void {
+    if (!this.prepared) return;
+    const world = this.prepared;
+    this.prepared = null;
+    this.startLevel(world);
+    this.saveDirty = true;
+    void this.save();
+  }
+
+  private startLevel(
+    world: PixelWorld,
+    saved?: { loads: CannonLoad[]; cannons: ActiveCannon[] },
+  ): void {
     this.teardownLevel();
 
     this.world = world;
-    this.deck = deck;
-    this.cannon = cannon;
     this.milestones = new MilestoneTracker(world.progress());
     this.stats = new ColorStats(world);
 
-    this.combat = new CombatSimulator(world, deck, cannon, this.rng, {}, this.lod);
+    this.reserve = new ColorAmmoReserve(world);
+    this.queue = new CannonQueue(new CannonLoadGenerator(this.reserve, this.rng), this.reserve);
+
+    this.combat = new CombatSimulator(world, this.queue, this.reserve, {}, this.lod);
+
+    if (saved) {
+      this.combat.restoreCannons(saved.cannons);
+      for (const cannon of saved.cannons) {
+        this.reserve.reserveForQueue(cannon.colorId, cannon.ammo);
+        this.reserve.promoteToActive(cannon.colorId, cannon.ammo);
+      }
+      this.queue.restore(saved.loads);
+    } else {
+      this.queue.refill();
+    }
 
     this.board = new PixelTextureRenderer(world.colorId, world.width, world.height, world.palette, {
       uploadHz: this.lod.currentBudget.textureUploadHz,
     });
-    this.projectiles = new ProjectileRenderer(this.app.renderer, world.palette);
+    this.projectiles = new ProjectileRenderer(world.palette);
 
     this.boardLayer.addChild(this.board.mesh);
     this.boardLayer.addChild(this.projectiles.view);
-    this.layoutBoard();
+
+    // Balls are one cell across, so the level opens close enough for a
+    // destroyed pixel to read as an event rather than as noise.
+    this.needsFraming = true;
 
     this.detachContextHandler = PixelTextureRenderer.attachContextLossHandler(
       this.app.renderer,
@@ -222,25 +264,26 @@ export class GameController {
     }
     this.world?.onDestroy(null);
     this.combat = null;
+    this.queue = null;
+    this.reserve = null;
   }
 
-  /**
-   * Fits the 1024² board inside the viewport, preserving the aspect ratio and
-   * keeping clear of the HUD panel on wide screens.
-   */
-  layoutBoard(): void {
-    const { width, height } = this.app.renderer;
-    const margin = 24;
-    const hudWidth = width >= 900 ? HUD_WIDTH : 0;
+  /** Frames the board into the play area the layout provides. */
+  layoutBoard(area: ScreenRect): void {
+    this.viewport.setArea(area);
+    // The opening zoom can only be computed once the play area is measured;
+    // running it earlier would clamp against a placeholder rectangle.
+    if (this.needsFraming) {
+      this.needsFraming = false;
+      this.viewport.reset();
+    }
+    this.applyViewport();
+  }
 
-    const available = Math.max(1, width - hudWidth - margin * 2);
-    const scale = Math.min(available / WORLD_WIDTH, (height - margin * 2) / WORLD_HEIGHT);
-
-    this.boardLayer.scale.set(scale);
-    this.boardLayer.position.set(
-      (available - WORLD_WIDTH * scale) / 2 + margin,
-      (height - WORLD_HEIGHT * scale) / 2,
-    );
+  /** Pushes the camera onto the render container. */
+  applyViewport(): void {
+    this.boardLayer.scale.set(this.viewport.scale);
+    this.boardLayer.position.set(this.viewport.offsetX(), this.viewport.offsetY());
   }
 
   // --- Loop ---------------------------------------------------------------
@@ -257,7 +300,9 @@ export class GameController {
 
     const stats = this.combat.getStats();
 
-    this.projectiles?.syncCannon(this.cannon.aim());
+    this.projectiles?.syncCannons(
+      this.combat.activeCannons.map((cannon) => ({ aim: cannon.aim(), colorId: cannon.colorId })),
+    );
     this.projectiles?.syncProjectiles(this.combat.pool);
     this.projectiles?.spawnImpacts(this.combat.visibleImpacts);
     this.projectiles?.update(deltaMs);
@@ -270,25 +315,19 @@ export class GameController {
 
     // The chromatic distribution is live gameplay data, not a readout: it is
     // what drives bottleneck detection and, later, the deck's adaptation.
-    this.stats?.sample(nowMs, this.deck?.damagePerSecondByColor(this.world));
+    this.stats?.sample(nowMs, this.combat.shotsPerSecondByColor(this.world.paletteSize));
 
     const crossed = this.milestones.update(this.world.progress());
     for (const milestone of crossed) this.events.onMilestone?.(milestone);
 
     this.profiler.recordFrame(deltaMs, simMs);
-    this.profiler.recordCounters(nowMs, stats.logicalImpacts, stats.visualImpacts, stats.destroyed);
+    this.profiler.recordCounters(nowMs, stats.shotsFired, this.combat.visibleImpacts.length, stats.destroyed);
 
     if (this.saveDirty && nowMs - this.lastAutosaveMs > AUTOSAVE_INTERVAL_MS) {
       this.lastAutosaveMs = nowMs;
       void this.save();
     }
   };
-
-  upgradeCard(cardId: string): ColorCard | null {
-    const card = this.deck?.upgrade(cardId) ?? null;
-    if (card) this.saveDirty = true;
-    return card;
-  }
 
   // --- Persistence & offline ---------------------------------------------
 
@@ -299,15 +338,14 @@ export class GameController {
       // a session; `beforeunload` is not dependable, especially on mobile.
       if (document.visibilityState === "hidden") void this.save();
     });
-    if (typeof window !== "undefined") {
-      window.addEventListener("resize", () => this.layoutBoard());
-    }
+
   }
 
   async save(): Promise<void> {
     const world = this.world;
-    const deck = this.deck;
-    if (!world || !deck) return;
+    const queue = this.queue;
+    const combat = this.combat;
+    if (!world || !queue || !combat) return;
 
     this.lastSimulatedAtEpochMs = Date.now();
     const save: CurrentLevelSave = {
@@ -322,8 +360,8 @@ export class GameController {
       colorId: world.colorId.buffer as ArrayBuffer,
       hp: world.hp.buffer as ArrayBuffer,
       flags: world.flags.buffer as ArrayBuffer,
-      deck: deck.serialize(),
-      cannon: this.cannon.serialize(),
+      loads: [...queue.visible],
+      cannons: combat.activeCannons.map((cannon) => cannon.serialize()),
       rngAlgorithm: RNG_ALGORITHM,
       rngState: this.rng.snapshot(),
       fractionalCarryByColor: this.fractionalCarry,
@@ -370,7 +408,6 @@ export class GameController {
       },
       saved.palette,
     );
-    const deck = new DeckRuntime(saved.deck);
 
     const elapsedMs = Math.max(0, Date.now() - saved.lastSimulatedAtEpochMs);
     if (elapsedMs > 1000) {
@@ -378,7 +415,7 @@ export class GameController {
       // touched again until the reply lands with the buffers it hands back.
       const report = await this.runOfflineCatchUp(
         world,
-        deck,
+        saved.cannons,
         world.colorId,
         world.hp,
         elapsedMs,
@@ -393,7 +430,10 @@ export class GameController {
           },
           saved.palette,
         );
-        this.startLevel(caughtUp, deck, new Cannon(saved.cannon));
+        this.startLevel(caughtUp, {
+          loads: saved.loads,
+          cannons: saved.cannons.map(ActiveCannon.restore),
+        });
         this.events.onOfflineReport?.(report.report);
         this.saveDirty = true;
         await this.save();
@@ -401,18 +441,36 @@ export class GameController {
       }
     }
 
-    this.startLevel(world, deck, new Cannon(saved.cannon));
+    this.startLevel(world, {
+      loads: saved.loads,
+      cannons: saved.cannons.map(ActiveCannon.restore),
+    });
     return true;
   }
 
+  /**
+   * Resolves an absence.
+   *
+   * The offline model stays aggregated: it spends the rounds the rail was
+   * carrying, spread over the colours those cannons targeted, and deletes real
+   * pixels through the index. The exact trajectory of eight hours of shots is
+   * not worth reconstructing — nobody was watching them — but the pixels that
+   * disappear are real, which is the part the player comes back to.
+   */
   private async runOfflineCatchUp(
     world: PixelWorld,
-    deck: DeckRuntime,
+    cannons: ActiveCannonState[],
     colorId: Uint8Array,
     hp: Uint8Array,
     elapsedMs: number,
   ): Promise<{ colorId: Uint8Array; hp: Uint8Array; report: OfflineReport } | null> {
-    const dps = Array.from(deck.damagePerSecondByColor(world));
+    const dps = new Array<number>(world.paletteSize).fill(0);
+    for (const cannon of cannons) {
+      if (cannon.colorId >= dps.length) continue;
+      // One round per fire interval, capped by what the cannon still carries.
+      dps[cannon.colorId] += 1000 / Math.max(1, cannon.fireIntervalMs);
+    }
+
     try {
       const output = await this.idleClient.simulate({
         elapsedMs,

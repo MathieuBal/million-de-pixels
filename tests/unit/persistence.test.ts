@@ -2,13 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import "fake-indexeddb/auto";
 import { SaveRepository } from "../../src/persistence/SaveRepository";
 import { migrate } from "../../src/persistence/migrations";
-import {
-  SAVE_SCHEMA_VERSION,
-  type CurrentLevelSave,
-  type LevelSaveV1,
-} from "../../src/persistence/schema";
-import { makeCard } from "../../src/deck/cards";
-import { PERIMETER } from "../../src/combat/Cannon";
+import { SAVE_SCHEMA_VERSION, type CurrentLevelSave } from "../../src/persistence/schema";
 import { RNG_ALGORITHM } from "../../src/rng/XorShift32";
 import type { PaletteEntry } from "../../src/core/constants";
 import { makePalette } from "../fixtures/palette";
@@ -37,8 +31,22 @@ function makeSave(overrides: Partial<CurrentLevelSave> = {}): CurrentLevelSave {
     colorId: colorId.buffer,
     hp: new Uint8Array(CELLS).fill(1).buffer,
     flags: new Uint8Array(CELLS).buffer,
-    deck: [makeCard(0, 0), makeCard(1, 0)],
-    cannon: { position: 1200, speed: 220 },
+    loads: [
+      { id: "load-1", colorId: 0, ammo: 40 },
+      { id: "load-2", colorId: 1, ammo: 40 },
+    ],
+    cannons: [
+      {
+        id: "load-0",
+        colorId: 0,
+        ammo: 17,
+        maxAmmo: 40,
+        trackPosition: 1200,
+        moveSpeed: 260,
+        fireIntervalMs: 140,
+        fireCooldownMs: 0,
+      },
+    ],
     rngAlgorithm: RNG_ALGORITHM,
     rngState: 123456,
     fractionalCarryByColor: [0.25, 0.75],
@@ -66,8 +74,10 @@ describe("SaveRepository", () => {
     expect(new Uint8Array(loaded!.colorId)).toEqual(original);
     expect(loaded!.rngState).toBe(save.rngState);
     expect(loaded!.fractionalCarryByColor).toEqual(save.fractionalCarryByColor);
-    expect(loaded!.deck).toHaveLength(2);
-    expect(loaded!.cannon.position).toBeCloseTo(1200, 10);
+    expect(loaded!.loads).toHaveLength(2);
+    expect(loaded!.cannons).toHaveLength(1);
+    expect(loaded!.cannons[0].ammo).toBe(17);
+    expect(loaded!.cannons[0].trackPosition).toBeCloseTo(1200, 10);
   });
 
   it("returns null for an unknown level", async () => {
@@ -107,31 +117,39 @@ describe("save migration", () => {
     expect(() => migrate({ ...makeSave(), schemaVersion: 99 } as never)).toThrow(/non supportée/);
   });
 
-  it("migrates a v1 orbital cannon onto the perimeter", () => {
-    const { cannon: _ignored, ...rest } = makeSave();
-    const v1: LevelSaveV1 = {
+  it("walks a v1 save all the way to the current version", () => {
+    const { loads: _l, cannons: _c, ...rest } = makeSave();
+    const v1 = {
       ...rest,
-      schemaVersion: 1,
+      schemaVersion: 1 as const,
       cannon: { angle: Math.PI, angularSpeed: 0.35, radius: 800 },
+      deck: [{ id: "old-card", colorId: 0 }],
     };
 
-    const migrated = migrate(v1);
+    const migrated = migrate(v1 as never);
     expect(migrated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
-    // Half a turn of the old orbit lands halfway along the perimeter.
-    expect(migrated.cannon.position).toBeCloseTo(PERIMETER / 2, 6);
-    expect(migrated.cannon.speed).toBeGreaterThan(0);
+    // The board survives; the old deck has no equivalent and the rail restarts.
+    expect(migrated.colorId.byteLength).toBe(CELLS);
+    expect(migrated.loads).toEqual([]);
+    expect(migrated.cannons).toEqual([]);
+    expect("cannon" in migrated).toBe(false);
+    expect("deck" in migrated).toBe(false);
   });
 
-  it("keeps the board buffers intact through a v1 migration", () => {
-    const { cannon: _ignored, ...rest } = makeSave();
-    const v1: LevelSaveV1 = {
+  it("drops the v2 deck without touching the board", () => {
+    const { loads: _l, cannons: _c, ...rest } = makeSave();
+    const v2 = {
       ...rest,
-      schemaVersion: 1,
-      cannon: { angle: 0, angularSpeed: 0.35, radius: 800 },
+      schemaVersion: 2 as const,
+      cannon: { position: 900, speed: 220 },
+      deck: [{ id: "old-card", colorId: 1 }],
     };
-    const migrated = migrate(v1);
-    expect(migrated.colorId.byteLength).toBe(CELLS);
-    expect(migrated.deck).toHaveLength(2);
+
+    const migrated = migrate(v2 as never);
+    expect(migrated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+    expect(migrated.loads).toEqual([]);
+    expect(migrated.cannons).toEqual([]);
+    expect(new Uint8Array(migrated.colorId)).toHaveLength(CELLS);
   });
 
   it("rejects a save whose buffers do not match its dimensions", () => {
@@ -141,7 +159,7 @@ describe("save migration", () => {
 
   it("rejects a save missing a required field", () => {
     const broken = makeSave();
-    delete (broken as Partial<CurrentLevelSave>).deck;
+    delete (broken as Partial<CurrentLevelSave>).loads;
     expect(() => migrate(broken)).toThrow(/champ manquant/);
   });
 
