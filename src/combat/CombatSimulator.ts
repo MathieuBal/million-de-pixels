@@ -1,12 +1,12 @@
-import { ActiveCannon } from "../cannon/ActiveCannon";
+import { ActiveCannon, FINALE_MOVE_SPEED } from "../cannon/ActiveCannon";
 import type { CannonLoad } from "../cannon/CannonLoad";
 import type { CannonQueue } from "../cannon/CannonQueue";
 import type { ColorAmmoReserve } from "../cannon/ColorAmmoReserve";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../core/constants";
 import type { PixelWorld } from "../world/PixelWorld";
 import { VisualLODController } from "../rendering/VisualLODController";
-import { crossedLanes } from "./Cannon";
-import { resolveLaneBurst, type BurstEvent } from "./LineBurst";
+import { crossedLanes, PERIMETER } from "./Cannon";
+import { BITE_DEPTH, resolveLaneBurst, type BurstEvent } from "./LineBurst";
 
 export interface ImpactEvent {
   x: number;
@@ -26,6 +26,12 @@ export interface CombatStats {
 export interface CombatOptions {
   maxActiveCannons?: number;
   /**
+   * Cells a single lane crossing takes off. One by default: a cannon files the
+   * outline as it passes. Deeper bites cut visible straight gashes across the
+   * picture instead of eating it from its edges.
+   */
+  biteDepth?: number;
+  /**
    * Cells around the last block of a burst also destroyed, of the same colour
    * only. Zero is the base game; it is the hook the effects system will drive,
    * not a purchasable axis.
@@ -35,6 +41,17 @@ export interface CombatOptions {
 
 /** Opening value, to test rather than to treat as balance. */
 export const MAX_ACTIVE_CANNONS = 5;
+
+/**
+ * Progress past which the level finishes itself.
+ *
+ * The last thousandth of an image is the worst part of the game and the part
+ * that strands players: a colour down to eleven pixels cannot fund a cannon
+ * worth launching, and what is left is usually buried under something else. The
+ * ammunition economy has simply stopped meaning anything by then — so it is
+ * dropped, and the image is finished.
+ */
+export const FINALE_THRESHOLD = 0.999;
 
 /**
  * Drives the cannons currently on the rail.
@@ -70,6 +87,7 @@ export class CombatSimulator {
 
   private readonly cannons: ActiveCannon[] = [];
   private readonly options: Required<CombatOptions>;
+  private finale = false;
 
   private stats: CombatStats = {
     activeCannons: 0,
@@ -88,6 +106,7 @@ export class CombatSimulator {
     this.lod = lod;
     this.options = {
       maxActiveCannons: options.maxActiveCannons ?? MAX_ACTIVE_CANNONS,
+      biteDepth: options.biteDepth ?? BITE_DEPTH,
       blastRadius: options.blastRadius ?? 0,
     };
   }
@@ -111,11 +130,58 @@ export class CombatSimulator {
 
   /** Pushes bought upgrades onto the cannons already travelling. */
   tuneCannons(moveSpeed: number): void {
-    for (const cannon of this.cannons) cannon.tune(moveSpeed);
+    for (const cannon of this.cannons) {
+      if (!cannon.unlimited) cannon.tune(moveSpeed);
+    }
   }
 
   get hasFreeSlot(): boolean {
+    if (this.finale) return false;
     return this.cannons.length < this.options.maxActiveCannons;
+  }
+
+  /** True once the level took over and is finishing itself. */
+  get isFinale(): boolean {
+    return this.finale;
+  }
+
+  /**
+   * Hands the end of the level to the game.
+   *
+   * One cannon per colour still standing, no stock, no lap timeout, at a rail
+   * speed no upgrade reaches. What they do is what every cannon does — cross
+   * lanes and peel the ones whose surface matches — so nothing is ever deleted
+   * off a lane, and `destroyRandomOfColor` stays out of live combat. Only the
+   * ammunition economy is dropped, because at this point there is none left to
+   * respect.
+   *
+   * The cannons already on the rail leave and give their rounds back first, so
+   * the reserve ends the level balanced.
+   */
+  startFinale(): void {
+    if (this.finale) return;
+    this.finale = true;
+
+    for (const cannon of this.cannons) {
+      this.reserve.releaseFromActive(cannon.colorId, cannon.ammo);
+    }
+    this.cannons.length = 0;
+
+    const colors: number[] = [];
+    for (let colour = 0; colour < this.world.paletteSize; colour++) {
+      if (this.world.aliveByColor(colour) > 0) colors.push(colour);
+    }
+
+    const spacing = PERIMETER / Math.max(1, colors.length);
+    colors.forEach((colorId, i) => {
+      const cannon = new ActiveCannon(
+        { id: `finale-${colorId}`, colorId, ammo: 0 },
+        (i * spacing) % PERIMETER,
+        { moveSpeed: FINALE_MOVE_SPEED },
+        true,
+      );
+      this.cannons.push(cannon);
+    });
   }
 
   get maxActiveCannons(): number {
@@ -175,6 +241,12 @@ export class CombatSimulator {
 
     this.removeFinishedCannons();
 
+    // Settle the ledger before the frame ends rather than at the start of the
+    // next one: a colour whose last pixel just died still had rounds promised
+    // to queued loads, and leaving them there would break
+    // `queued + active <= alive` for a frame.
+    this.queue.dropExhausted();
+
     // A cannon that leaves the rail with rounds unspent gives them back to its
     // colour, and nothing else in the game refills the queue: `take()` needs a
     // tile to click and `dropExhausted()` only refills when it dropped
@@ -186,9 +258,10 @@ export class CombatSimulator {
   }
 
   /**
-   * A colour running out ends its cannons on the spot and clears its queued
-   * loads. No prismatic conversion: a cannon with nothing left to shoot at
-   * simply leaves.
+   * A colour running out ends its cannons on the spot, before they get to work
+   * this frame. No prismatic conversion: a cannon with nothing left to shoot at
+   * simply leaves. Its queued loads are cleared at the end of the frame, once
+   * everything that could kill a colour has run.
    */
   private retireExhaustedColors(): void {
     for (const cannon of this.cannons) {
@@ -196,7 +269,6 @@ export class CombatSimulator {
         cannon.retire();
       }
     }
-    this.queue.dropExhausted();
   }
 
   /**
@@ -208,7 +280,10 @@ export class CombatSimulator {
    * does is exactly the distance it covered.
    */
   private workLanes(cannon: ActiveCannon, travelled: number): void {
-    if (cannon.isRetired || cannon.ammo === 0) return;
+    // `isFinished` rather than `ammo === 0`: a finale cannon carries no stock
+    // at all, and reading the stock directly would park it on the rail doing
+    // nothing.
+    if (cannon.isFinished()) return;
 
     // Enumerating from the position before the move keeps the lanes tiled
     // exactly: no lane covered twice, none skipped, whatever the frame rate.
@@ -217,11 +292,14 @@ export class CombatSimulator {
     for (const aim of crossedLanes(from, travelled)) {
       this.stats.lanesExamined++;
 
-      const burst = resolveLaneBurst(this.world, cannon, aim);
+      const burst = resolveLaneBurst(this.world, cannon, aim, this.options.biteDepth);
       if (burst.destroyed === 0) continue;
 
       cannon.onBurst(burst.destroyed);
-      this.reserve.releaseFromActive(cannon.colorId, burst.destroyed);
+      // A finale cannon was never in the ledger, so it has nothing to give back.
+      if (!cannon.unlimited) {
+        this.reserve.releaseFromActive(cannon.colorId, burst.destroyed);
+      }
 
       this.stats.bursts++;
       this.stats.destroyed += burst.destroyed;
@@ -235,7 +313,7 @@ export class CombatSimulator {
       this.bursts.push(burst);
       this.sampleImpacts(burst);
 
-      if (cannon.ammo === 0) return;
+      if (cannon.isFinished()) return;
     }
   }
 
@@ -306,7 +384,7 @@ export class CombatSimulator {
       const cannon = this.cannons[i];
       if (!cannon.isFinished()) continue;
       // Rounds it never got to spend go back to the colour's reserve.
-      this.reserve.releaseFromActive(cannon.colorId, cannon.ammo);
+      if (!cannon.unlimited) this.reserve.releaseFromActive(cannon.colorId, cannon.ammo);
       this.cannons.splice(i, 1);
     }
   }

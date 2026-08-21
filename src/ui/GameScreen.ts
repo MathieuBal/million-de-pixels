@@ -160,6 +160,10 @@ export class GameScreen {
       this.railTokens.lastElementChild!.remove();
     }
 
+    // Past a dozen cannons the labels overlap into mush, so the ring drops to
+    // plain dots. The Rail upgrade runs to fifty-five.
+    const dense = cannons.length > 12;
+
     const rect = this.railTokens.getBoundingClientRect();
     for (let i = 0; i < cannons.length; i++) {
       const cannon = cannons[i];
@@ -167,8 +171,9 @@ export class GameScreen {
       const point = railPoint(cannon.trackPosition, rect.width, rect.height);
       token.style.left = `${point.x}px`;
       token.style.top = `${point.y}px`;
-      token.textContent = `${cannon.ammo}/${cannon.maxAmmo}`;
-      token.dataset.empty = String(cannon.ammo === 0);
+      token.textContent = cannon.unlimited ? "∞" : `${cannon.ammo}/${cannon.maxAmmo}`;
+      token.dataset.dense = String(dense);
+      token.dataset.empty = String(!cannon.unlimited && cannon.ammo === 0);
     }
   }
 

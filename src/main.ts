@@ -63,6 +63,8 @@ async function boot(): Promise<void> {
     },
     onMilestone: (milestone) => gameScreen.announceMilestone(milestone),
     onLevelCleared: () => runMenu.announceCleared(),
+    onFinale: () =>
+      gameScreen.notify("99,9 % — la toile se termine toute seule, munitions illimitées."),
     onOfflineReport: (report) => {
       const world = game.getWorld();
       if (world) offlineScreen.show(report, world.palette);

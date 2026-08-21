@@ -134,13 +134,15 @@ export class BurstRenderer {
   /**
    * Spawns one tracer per burst, spanning the run of cells it took out.
    *
-   * A one-block burst still gets a tracer, one cell long: the player needs to
-   * see the lane that fired, not only how much it cost.
+   * Only for a bite that actually took a run. At the base depth of one cell a
+   * tracer would be indistinguishable from the spark already drawn there, and
+   * at two hundred and sixty bites a second per cannon that is pure noise — the
+   * erosion of the outline is the effect, not a line drawn over it.
    */
   spawnBursts(bursts: readonly BurstEvent[]): void {
     for (const burst of bursts) {
       if (this.tracers.length >= this.maxTracers) break;
-      if (burst.destroyed <= 0 || burst.firstIndex < 0) continue;
+      if (burst.destroyed <= 1 || burst.firstIndex < 0) continue;
 
       const particle =
         this.tracerPool.pop() ??

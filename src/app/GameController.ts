@@ -1,5 +1,5 @@
 import { Application, Container } from "pixi.js";
-import { CombatSimulator } from "../combat/CombatSimulator";
+import { CombatSimulator, FINALE_THRESHOLD } from "../combat/CombatSimulator";
 import {
   DEFAULT_ALPHA_THRESHOLD,
   PIXEL_COUNT,
@@ -59,6 +59,8 @@ export interface GameEvents {
   onMilestone?: (milestone: Milestone) => void;
   /** The board is empty. Fired once per pass, the moment the last pixel goes. */
   onLevelCleared?: (pass: number) => void;
+  /** The level took over and is finishing itself. Fired once per pass. */
+  onFinale?: () => void;
   onOfflineReport?: (report: OfflineReport) => void;
   onError?: (message: string) => void;
 }
@@ -454,6 +456,15 @@ export class GameController {
     const crossed = this.milestones.update(this.world.progress());
     for (const milestone of crossed) this.events.onMilestone?.(milestone);
 
+    // The tail of a level is where players get stranded: what is left is a
+    // handful of pixels, often buried, and too few to fund a cannon. Past the
+    // threshold the game finishes the image itself.
+    if (!this.combat.isFinale && this.world.progress() >= FINALE_THRESHOLD) {
+      this.combat.startFinale();
+      this.saveDirty = true;
+      this.events.onFinale?.();
+    }
+
     if (!this.clearedAnnounced && this.world.aliveTotal() === 0) {
       this.clearedAnnounced = true;
       this.saveDirty = true;
@@ -507,7 +518,12 @@ export class GameController {
       hp: world.hp.buffer as ArrayBuffer,
       flags: world.flags.buffer as ArrayBuffer,
       loads: [...queue.visible],
-      cannons: combat.activeCannons.map((cannon) => cannon.serialize()),
+      // Finale cannons are not part of the run: they carry no stock and no line
+      // in the reserve, and the finale re-arms itself from the board's progress
+      // when the level comes back.
+      cannons: combat.activeCannons
+        .filter((cannon) => !cannon.unlimited)
+        .map((cannon) => cannon.serialize()),
       upgrades: this.upgrades.serialize(),
       completions: this.completions,
       // What the rail was actually producing, per colour, at the moment the

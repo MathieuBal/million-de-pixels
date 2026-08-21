@@ -95,10 +95,10 @@ Les gros buffers circulent en **transfert** (`postMessage` + transfer list), pas
 | Valeurs réservées | `254 = VOID`, `255 = DEAD` |
 | Rendu pixels | 1 texture `r8unorm` + shader palette, `scaleMode: nearest` |
 | Physique | mathématique — parcours axial à pas fixe, aucun moteur physique |
-| Tir | canon sur le cadre, perpendiculaire à son bord, une voie pelée d'un coup |
+| Tir | canon sur le cadre, perpendiculaire à son bord, une morsure par voie |
 | Quantification | Median Cut déterministe par défaut, k-means Lab en option qualité |
 | Dithering | désactivé — les couleurs portent une signification mécanique |
-| Persistance | IndexedDB, save v5 versionnée, index dérivés non sauvegardés |
+| Persistance | IndexedDB, save v6 versionnée, index dérivés non sauvegardés |
 | Image source | jamais persistée (seul le niveau quantifié l'est) |
 | PRNG | `xorshift32-v1`, versionné, jamais `Math.random()` |
 
@@ -137,18 +137,24 @@ faisait seulement sauter plus de voies (1 sur 36 au niveau 0, 1 sur 137 au nivea
 intervalle semi-ouvert : les voies se pavent exactement, sans doublon ni oubli, et
 30, 60 ou 120 FPS sur le même temps simulé visitent les mêmes voies.
 
-**Rafale de ligne.** Une voie dont la surface expose la couleur du canon est pelée
-d'un coup, de la surface vers l'intérieur, jusqu'à l'obstacle ou l'épuisement des
-munitions. `SurfaceIndex.frontIndex()` donne la cellule exposée en une lecture,
-donc la rafale est O(blocs détruits) et rien ne balaye la voie. La règle
-fondamentale ne bouge pas : **une munition détruit au plus un bloc**, et la
-première couleur étrangère arrête la rafale sans jamais être détruite.
+**Morsure de ligne.** Une voie dont la surface expose la couleur du canon perd
+la cellule qui lui fait face — **une seule**, `BITE_DEPTH = 1`. Le canon lime le
+contour au passage au lieu de forer dedans : au-delà de quelques cellules par
+voie, le plateau cesse d'être rongé par les bords et se met à montrer de longues
+entailles droites en travers de l'image, ce qui n'est pas ce à quoi le rail doit
+ressembler. Le débit vient de franchir plus de voies — vitesse, canons, stock —
+jamais de mordre plus profond. `SurfaceIndex.frontIndex()` donne la cellule
+exposée en une lecture, donc rien ne balaye la voie. La règle fondamentale ne
+bouge pas : **une munition détruit au plus un bloc**, et la première couleur
+étrangère arrête la morsure sans jamais être détruite.
 
-**Découplage rafale / spectacle.** Une rafale détruit instantanément : une bille qui
-voyagerait *après* la disparition du pixel serait un mensonge visuel, donc il n'y a
-plus de projectiles mobiles. `BurstRenderer` dessine un **traceur** sur la voie pelée
-qui s'estompe, plus des étincelles échantillonnées par `VisualLODController`. Le
-budget graphique ne peut plus jamais retenir un tir.
+**Découplage morsure / spectacle.** Une morsure détruit instantanément : une bille
+qui voyagerait *après* la disparition du pixel serait un mensonge visuel, donc il
+n'y a plus de projectiles mobiles. `BurstRenderer` dessine des étincelles
+échantillonnées par `VisualLODController`, et un **traceur** sur la voie
+uniquement quand une morsure a emporté une vraie enfilade — au-delà de la
+profondeur de base, où il ferait double emploi avec l'étincelle. Le budget
+graphique ne peut plus jamais retenir un tir.
 
 **Reprise hors-ligne réelle.** L'absence n'est pas rejouée frame par frame : la
 production est intégrée analytiquement par couleur, la fraction résiduelle est
@@ -174,16 +180,23 @@ L'image finance sa propre destruction : un pixel détruit vaut un fragment. Quat
 axes, achetés dans un panneau et appliqués immédiatement — y compris aux canons
 déjà sur le rail, sans quoi un achat semblerait sans effet.
 
-| Axe | Effet | Base | Paliers |
-|---|---|---|---|
-| Vitesse | voies examinées par seconde | 260 | 15 × +8 % (×3,17) |
-| Rail | canons simultanés | 5 | |
-| Chargeur | munitions par case | 40 | |
-| Étal | cases proposées | 8 | |
+| Axe | Effet | Base → max | Paliers | Coût total |
+|---|---|---|---:|---:|
+| Vitesse | voies examinées par seconde | 260 → 2 426 | 150 × +1,5 % | 594 k |
+| Rail | canons simultanés | 5 → 55 | 50 × +1 | 369 k |
+| Chargeur | munitions par case | 40 → 1 240 | 100 × +12 | 765 k |
+| Étal | cases proposées | 8 → 48 | 40 × +1 | 74 k |
+
+**Pistes longues, petits pas.** Chaque axe court sur dix fois plus de paliers
+qu'à l'origine, chacun valant environ un dixième, avec un prix qui croît à la
+racine dixième correspondante. Les plafonds finissent plus hauts, mais c'est un
+effet de bord : ce qui compte est qu'il y ait toujours un palier suivant à
+portée, et qu'aucun axe ne cesse discrètement d'être achetable au milieu d'un
+passage. Tout maximiser coûte ~1,8 M de fragments sur une image d'un million de
+pixels — soit environ deux passages.
 
 **Vitesse est l'axe de production.** Depuis que le rail est l'horloge, voies par
-seconde *est* le débit : 260 au niveau 0, 825 au niveau 15. Quinze paliers courts
-plutôt que huit longs, pour que le joueur sente souvent la voie tourner plus vite.
+seconde *est* le débit.
 
 `blastRadius` reste une option de `CombatSimulator` par défaut à zéro : c'est le
 point d'accroche du futur système d'effets, pas un axe achetable.
@@ -191,6 +204,35 @@ point d'accroche du futur système d'effets, pas un axe achetable.
 La portée est le niveau : une nouvelle image repart des valeurs de base, et rien
 n'exige de méta-progression. **Tous les prix et paliers sont des valeurs
 d'ouverture à équilibrer.**
+
+## Finir une image, en changer, recommencer
+
+**Achèvement automatique à 99,9 %.** La dernière fraction de millième est la
+pire partie du jeu et celle qui bloque : ce qui reste tient en quelques dizaines
+de pixels, souvent enterrés, et trop peu nombreux pour financer un canon. Passé
+le seuil, la partie prend la main — un canon par couleur encore debout, sans
+stock, sans délai d'abandon, à une vitesse de rail qu'aucune amélioration
+n'atteint. Ils font ce que fait n'importe quel canon : franchir des voies et
+peler celles dont la surface correspond. Rien n'est jamais supprimé hors d'une
+voie, `destroyRandomOfColor()` reste interdit en combat. Seule l'économie de
+munitions est abandonnée, parce qu'à ce stade il n'en reste plus à respecter.
+
+**Trois sorties**, dans le menu de la barre du haut :
+
+| Action | Quand | Ce qu'il advient |
+|---|---|---|
+| Passage suivant | plateau vide | l'image revient entière, tout ce qui a été acheté reste |
+| Recommencer l'image | à tout moment | plateau entier, améliorations et fragments à zéro |
+| Changer d'image | à tout moment | la partie est sauvegardée et mise de côté, jamais supprimée |
+
+La remise à zéro totale du redémarrage n'est pas une punition : un pixel détruit
+vaut un fragment, donc garder ses achats ferait du redémarrage une façon de
+farmer les mêmes pixels indéfiniment. Le compteur de passages, lui, ne bouge que
+sur une vraie fin de niveau.
+
+`PixelWorld.restart()` reconstruit le niveau depuis `baseColorId`, porté depuis
+le premier commit exactement pour ça : l'image d'origine ne quitte jamais la
+mémoire, donc recommencer coûte une copie et aucun ré-import.
 
 ## Mesures
 
