@@ -3,8 +3,14 @@ import { NO_EFFECTS, resolveEffects, type EffectLoadout } from "../../src/combat
 import { aimAt } from "../../src/combat/Cannon";
 import { PixelWorld } from "../../src/world/PixelWorld";
 import { XorShift32 } from "../../src/rng/XorShift32";
-import { PIXEL_COUNT, VOID, WORLD_WIDTH } from "../../src/core/constants";
+import { DEAD, PIXEL_COUNT, VOID, WORLD_WIDTH } from "../../src/core/constants";
 import { makePalette } from "../fixtures/palette";
+
+function readRow(world: PixelWorld, length: number): string {
+  let out = "";
+  for (let x = 0; x < length; x++) out += world.colorId[x] === DEAD ? "." : String(world.colorId[x]);
+  return out;
+}
 
 /** VOID everywhere except one row, written left to right from x = 0. */
 function rowWorld(pattern: number[], paletteSize = 3): PixelWorld {
@@ -111,6 +117,48 @@ describe("resolveEffects", () => {
       );
 
       expect(out.destroyed).toBe(3);
+    });
+  });
+
+  describe("feu", () => {
+    it("floods the colour region outwards from the kill", () => {
+      const world = blockWorld(9);
+      const center = 104 * WORLD_WIDTH + 104;
+      const out = resolveEffects(
+        world, 0, FROM_LEFT, center,
+        always({ fireChance: 1, fireSpread: 12 }),
+        new XorShift32(5), 999,
+      );
+
+      expect(out.burned).toBe(true);
+      expect(out.destroyed).toBe(12);
+    });
+
+    it("follows the shape of the colour rather than stamping a disc", () => {
+      // A one-cell-wide arm: a blast of the same size would take the cells
+      // beside it too, a fire can only go where the colour goes.
+      const world = rowWorld([0, 0, 0, 0, 0, 0]);
+      const out = resolveEffects(
+        world, 0, FROM_LEFT, 0,
+        always({ fireChance: 1, fireSpread: 3 }),
+        new XorShift32(5), 999,
+      );
+
+      expect(out.destroyed).toBe(3);
+      // The kill itself is the origin, not fuel; the fire takes the three cells
+      // the colour actually offers next to it, in order.
+      expect(readRow(world, 6)).toBe("0...00");
+    });
+
+    it("stops on the stock like every other effect", () => {
+      const world = blockWorld(9);
+      const out = resolveEffects(
+        world, 0, FROM_LEFT, 104 * WORLD_WIDTH + 104,
+        always({ fireChance: 1, fireSpread: 40 }),
+        new XorShift32(5), 5,
+      );
+
+      expect(out.destroyed).toBe(5);
     });
   });
 

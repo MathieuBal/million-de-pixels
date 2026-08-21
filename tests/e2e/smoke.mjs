@@ -156,13 +156,17 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
-  check("le panneau liste les douze axes", (await page.locator(".upgrade-row").count()) === 12);
-  check("les axes sont groupes par famille", (await page.locator(".upgrade-family").count()) === 4);
+  // In game the shop stays short on purpose: six axes, three families. The
+  // capabilities and their numbers live in the between-toiles tree.
+  check("le panneau reste court en jeu", (await page.locator(".upgrade-row").count()) === 6);
+  check("les axes sont groupes par famille", (await page.locator(".upgrade-family").count()) === 3);
 
   await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  const tree = await page.locator(".upgrade-row").count();
+  check("l'arbre n'ouvre que ses racines et ses portes", tree > 6 && tree < 20, `${tree} noeuds`);
   check(
-    "l'onglet permanent liste les eclats",
-    (await page.locator(".upgrade-row").count()) === 10,
+    "les branches restent fermees tant que la capacite ne l'est pas",
+    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 0,
   );
   await page.locator('#upgrade-tabs button[data-tab="level"]').click();
 
@@ -353,6 +357,66 @@ async function checkClearReward(browser, fixture) {
   await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
   const shards = digits(await page.locator("#upgrade-shards").innerText());
   check("les éclats sont au crédit du profil", shards === total, `${shards} au solde`);
+
+  // A branch opens only when its capability is paid for — and then it is there.
+  check(
+    "la branche est fermée avant sa capacité",
+    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 0,
+  );
+  await page.evaluate(() => {
+    const meta = window.__game.getMeta();
+    meta.recordClear({ playablePixels: 60_000_000, paletteSize: 8, awkwardColors: 5, pass: 1 });
+    meta.buy("explosion");
+    meta.buy("nuancier");
+  });
+  await page.locator('#upgrade-tabs button[data-tab="level"]').click();
+  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  check(
+    "elle s'ouvre une fois la capacité achetée",
+    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 1,
+  );
+
+  await ctx.close();
+  await checkPaletteBoard(browser, fixture);
+}
+
+/**
+ * The palette board, on a board that is still standing.
+ *
+ * Reading it on a cleared image would only prove the cells render — every
+ * colour would be "épuisée". What it is for is the distinction between a colour
+ * a cannon can reach and one buried behind another, which only exists while
+ * there is something left to bury.
+ */
+async function checkPaletteBoard(browser, fixture) {
+  const ctx = await browser.newContext({ viewport: { width: 430, height: 932 } });
+  const page = await ctx.newPage();
+
+  await page.goto(URL, { waitUntil: "networkidle" });
+  await page.setInputFiles("#file-input", fixture);
+  await page.waitForSelector("#start-run:not([disabled])", { timeout: 60000 });
+  await page.locator("#start-run").click();
+  await page.waitForSelector("#screen-game:not([hidden])", { timeout: 60000 });
+  await page.waitForTimeout(1200);
+
+  await page.evaluate(() => {
+    const meta = window.__game.getMeta();
+    meta.recordClear({ playablePixels: 60_000_000, paletteSize: 8, awkwardColors: 5, pass: 1 });
+    meta.buy("nuancier");
+  });
+  await page.waitForTimeout(600);
+
+  check("le nuancier apparaît une fois débloqué", await page.locator("#palette-toggle").isVisible());
+  await page.locator("#palette-toggle").click();
+  await page.waitForTimeout(500);
+
+  const states = await page.$$eval(".palette-cell", (nodes) => nodes.map((n) => n.dataset.state));
+  check("il montre la palette entière", states.length === 8, `${states.length} couleurs`);
+  check(
+    "il sait quelles couleurs sont encore à portée",
+    states.includes("open"),
+    states.join(" "),
+  );
 
   await ctx.close();
 }

@@ -75,6 +75,8 @@ const PROFILE_ID = "local";
 /** Settings key holding the profile's permanent progression. */
 const META_KEY = "meta:local";
 const AUTOSAVE_INTERVAL_MS = 10_000;
+/** How often Emplette looks at the shop. Often enough to feel automatic. */
+const AUTO_BUY_INTERVAL_MS = 700;
 
 /**
  * Owns the whole session: import, run, autosave, offline catch-up.
@@ -122,6 +124,7 @@ export class GameController {
   private needsFraming = false;
   private saveDirty = false;
   private autoLaunch = false;
+  private lastAutoBuyMs = 0;
   private lastAutosaveMs = 0;
   private detachContextHandler: (() => void) | null = null;
 
@@ -238,6 +241,15 @@ export class GameController {
     return true;
   }
 
+  /** Whether the profile has the node, whatever the toggle says. */
+  get canAutoLaunch(): boolean {
+    return this.meta.bonus().canAutoLaunch;
+  }
+
+  get canSeePalette(): boolean {
+    return this.meta.bonus().canSeePalette;
+  }
+
   get isAutoLaunching(): boolean {
     return this.autoLaunch;
   }
@@ -250,10 +262,18 @@ export class GameController {
   }
 
   private applyUpgrades(): void {
-    const effects = this.upgrades.effects(this.meta.bonus());
+    const bonus = this.meta.bonus();
+    const effects = this.upgrades.effects(bonus);
+
+    // Négoce discounts the shop the player is looking at, so it is set on the
+    // state that prices it rather than folded into the balance.
+    this.upgrades.setPriceMultiplier(bonus.priceMultiplier);
+
     this.combat?.setMaxActiveCannons(effects.maxActiveCannons);
     this.combat?.tuneCannons(effects.moveSpeed);
-    this.combat?.setEffects(effects.effects);
+    // The capabilities are the profile's, not the image's: a cannon does not
+    // pierce, explode, arc or burn until the talent tree paid for it once.
+    this.combat?.setEffects(bonus.effects);
     this.generator?.setAmmoPerLoad(effects.ammoPerLoad);
     this.queue?.setSize(effects.visibleLoads);
   }
@@ -502,6 +522,15 @@ export class GameController {
     const deltaMs = Math.min(this.app.ticker.deltaMS, 100); // clamp after a stall
 
     if (this.phase !== "playing" || !this.combat || !this.world || !this.board) return;
+
+    if (this.meta.bonus().canAutoBuy && nowMs - this.lastAutoBuyMs > AUTO_BUY_INTERVAL_MS) {
+      this.lastAutoBuyMs = nowMs;
+      // The cheapest one, so it spends fragments the way a player watching the
+      // panel would: little and often, never saving up for one big axis it was
+      // not asked to prefer.
+      const cheapest = this.upgrades.cheapestAffordable();
+      if (cheapest) this.buyUpgrade(cheapest);
+    }
 
     if (this.autoLaunch && this.queue) {
       // One per frame, not a loop: the rail should visibly fill rather than

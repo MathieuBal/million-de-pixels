@@ -68,16 +68,103 @@ describe("MetaProgression", () => {
     expect(reward.total).toBe(20);
     expect(meta.balance).toBe(20);
     expect(meta.totalClears).toBe(1);
+
+    const price = meta.priceOf("elan")!;
     expect(meta.buy("elan")).toBe(true);
-    expect(meta.balance).toBe(17);
-    expect(meta.bonus().fragmentMultiplier).toBeCloseTo(1.1, 6);
+    expect(meta.balance).toBe(20 - price);
+    expect(meta.bonus().fragmentMultiplier).toBeCloseTo(1.002, 6);
   });
 
-  it("pays more once Prospecteur is bought", () => {
-    const meta = new MetaProgression({ earned: 100 });
+  it("pays more once Prospecteur is stacked", () => {
+    const meta = new MetaProgression({ earned: 100_000 });
     const before = meta.recordClear(plain).total;
-    for (let i = 0; i < 5; i++) meta.buy("prospecteur");
+    for (let i = 0; i < 50; i++) meta.buy("prospecteur");
     expect(meta.recordClear(plain).total).toBeGreaterThan(before);
+  });
+
+  describe("nœuds sans plafond", () => {
+    it("never runs out of levels to buy", () => {
+      const meta = new MetaProgression({ earned: 1_000_000 });
+      for (let i = 0; i < 500; i++) expect(meta.buy("fondation")).toBe(true);
+      expect(meta.isMaxed("fondation")).toBe(false);
+      expect(meta.priceOf("fondation")).not.toBeNull();
+      expect(meta.levelOf("fondation")).toBe(500);
+    });
+
+    it("creeps rather than doubles", () => {
+      // The whole point of the shape: a geometric price turns an unbounded node
+      // into a bounded one after twenty points.
+      const meta = new MetaProgression({ earned: 10_000_000 });
+      const first = meta.priceOf("fondation")!;
+      for (let i = 0; i < 100; i++) meta.buy("fondation");
+      const hundredth = meta.priceOf("fondation")!;
+      expect(hundredth).toBeGreaterThan(first);
+      expect(hundredth).toBeLessThan(first * 20);
+    });
+
+    it("moves a fifth of a percent at a time", () => {
+      const meta = new MetaProgression({ earned: 1_000_000 });
+      for (let i = 0; i < 100; i++) meta.buy("fondation");
+      expect(meta.bonus().speedMultiplier).toBeCloseTo(1.2, 6);
+    });
+
+    it("discounts the shop without ever reaching free", () => {
+      const meta = new MetaProgression({ earned: 100_000_000 });
+      for (let i = 0; i < 2000; i++) meta.buy("negoce");
+      const price = meta.bonus().priceMultiplier;
+      expect(price).toBeLessThan(0.05);
+      expect(price).toBeGreaterThan(0);
+    });
+  });
+
+  describe("capacités", () => {
+    it("hides a branch until its capability is bought", () => {
+      const meta = new MetaProgression({ earned: 100_000 });
+      expect(meta.isAvailable("souffle")).toBe(false);
+      expect(meta.priceOf("souffle")).toBeNull();
+      expect(meta.buy("souffle")).toBe(false);
+
+      expect(meta.buy("explosion")).toBe(true);
+      expect(meta.isAvailable("souffle")).toBe(true);
+      expect(meta.buy("souffle")).toBe(true);
+    });
+
+    it("leaves a branch inert while its capability is not owned", () => {
+      // Nothing can buy into a locked branch, so the bonus stays at zero and
+      // the cannon simply does not have the capability.
+      const meta = new MetaProgression({ earned: 100_000 });
+      expect(meta.bonus().effects.explosionChance).toBe(0);
+      meta.buy("explosion");
+      expect(meta.bonus().effects.explosionChance).toBeGreaterThan(0);
+      expect(meta.bonus().effects.lightningChance).toBe(0);
+    });
+
+    it("gives each capability a working baseline the moment it is unlocked", () => {
+      const meta = new MetaProgression({ earned: 100_000 });
+      for (const id of ["perce", "explosion", "foudre", "feu"] as const) {
+        expect(meta.buy(id)).toBe(true);
+      }
+      const effects = meta.bonus().effects;
+      expect(effects.pierceChance).toBeGreaterThan(0);
+      expect(effects.pierceDepth).toBeGreaterThan(0);
+      expect(effects.explosionRadius).toBeGreaterThan(0);
+      expect(effects.lightningArcs).toBeGreaterThan(0);
+      expect(effects.fireSpread).toBeGreaterThan(0);
+    });
+
+    it("caps a proc chance below certainty", () => {
+      const meta = new MetaProgression({ earned: 100_000_000 });
+      meta.buy("foudre");
+      for (let i = 0; i < 3000; i++) meta.buy("foudreProc");
+      expect(meta.bonus().effects.lightningChance).toBeLessThanOrEqual(0.9);
+    });
+
+    it("keeps Emplette behind Automate", () => {
+      const meta = new MetaProgression({ earned: 100_000 });
+      expect(meta.isAvailable("emplette")).toBe(false);
+      meta.buy("auto");
+      expect(meta.isAvailable("emplette")).toBe(true);
+    });
   });
 
   describe("mémoire", () => {
@@ -88,8 +175,8 @@ describe("MetaProgression", () => {
     });
 
     it("carries a slice of the last cleared toile's build", () => {
-      const meta = new MetaProgression({ earned: 10_000 });
-      for (let i = 0; i < 8; i++) meta.buy("memoire"); // 20 %
+      const meta = new MetaProgression({ earned: 1_000_000 });
+      for (let i = 0; i < 100; i++) meta.buy("memoire"); // 20 %
       meta.recordClear(plain, { vitesse: 40, munitions: 20, cases: 2 });
 
       const carried = meta.bonus().carriedLevels;
@@ -99,9 +186,16 @@ describe("MetaProgression", () => {
       expect(carried.cases).toBeUndefined();
     });
 
+    it("never carries the whole build", () => {
+      const meta = new MetaProgression({ earned: 100_000_000 });
+      for (let i = 0; i < 2000; i++) meta.buy("memoire");
+      meta.recordClear(plain, { vitesse: 100 });
+      expect(meta.bonus().carriedLevels.vitesse).toBeLessThan(100);
+    });
+
     it("only a real clear updates what is carried", () => {
-      const meta = new MetaProgression({ earned: 10_000 });
-      for (let i = 0; i < 8; i++) meta.buy("memoire");
+      const meta = new MetaProgression({ earned: 1_000_000 });
+      for (let i = 0; i < 100; i++) meta.buy("memoire");
       meta.recordClear(plain, { vitesse: 40 });
 
       // Nothing else touches the snapshot: a restart must never bank a build.
@@ -117,7 +211,7 @@ describe("MetaProgression", () => {
   });
 
   it("treats the comfort unlocks as one-shot", () => {
-    const meta = new MetaProgression({ earned: 1000 });
+    const meta = new MetaProgression({ earned: 100_000 });
     expect(meta.buy("filtre")).toBe(true);
     expect(meta.bonus().canFilterQueue).toBe(true);
     expect(meta.isMaxed("filtre")).toBe(true);
@@ -137,9 +231,9 @@ describe("MetaProgression", () => {
   });
 
   it("hands its bonus to a level's effects", () => {
-    const meta = new MetaProgression({ earned: 10_000 });
+    const meta = new MetaProgression({ earned: 1_000_000 });
     for (let i = 0; i < 3; i++) meta.buy("socle");
-    meta.buy("elan");
+    for (let i = 0; i < 100; i++) meta.buy("elan");
 
     const base = new UpgradeState().effects();
     const boosted = new UpgradeState().effects(meta.bonus());
@@ -149,9 +243,9 @@ describe("MetaProgression", () => {
   });
 
   it("raises the starting rail and magazine of every image", () => {
-    const meta = new MetaProgression({ earned: 10_000 });
-    for (let i = 0; i < 6; i++) meta.buy("fondation");
-    for (let i = 0; i < 6; i++) meta.buy("atelier");
+    const meta = new MetaProgression({ earned: 1_000_000 });
+    for (let i = 0; i < 100; i++) meta.buy("fondation");
+    for (let i = 0; i < 100; i++) meta.buy("atelier");
 
     const base = new UpgradeState().effects();
     const boosted = new UpgradeState().effects(meta.bonus());

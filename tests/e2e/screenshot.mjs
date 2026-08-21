@@ -69,6 +69,26 @@ try {
     await page.waitForSelector("#run-menu:not([hidden])", { timeout: 15000 });
     await page.waitForTimeout(400);
   }
+  if (process.env.SHOT_TREE) {
+    await page.evaluate(() => {
+      const meta = window.__game.getMeta();
+      meta.recordClear({ playablePixels: 40_000_000, paletteSize: 8, awkwardColors: 5, pass: 1 });
+      for (const id of ["explosion", "foudre", "filtre", "nuancier"]) meta.buy(id);
+      for (let i = 0; i < 30; i++) { meta.buy("fondation"); meta.buy("souffle"); }
+    });
+    await page.locator("#pause").click();
+    await page.waitForSelector("#upgrade-panel:not([hidden])");
+    await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      const rows = document.getElementById("upgrade-rows");
+      rows.scrollTop = rows.scrollHeight;
+    });
+    await page.waitForTimeout(200);
+    await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
   if (process.env.SHOT_PANEL) {
     await page.locator("#pause").click();
     await page.waitForSelector("#upgrade-panel:not([hidden])");
