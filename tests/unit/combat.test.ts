@@ -597,6 +597,21 @@ describe("CombatSimulator", () => {
     expect(combat.hasFreeSlot).toBe(false);
   });
 
+  it("launches new cannons at the bought speed, not the base one", () => {
+    // The upgrade used to reach only the cannons already travelling, so it
+    // faded silently as the rail turned over and replacements spawned at 260.
+    const { combat, queue } = setup(4, 4);
+    combat.tuneCannons(900);
+
+    const first = combat.launch(queue.visible[0].id)!;
+    expect(first.moveSpeed).toBe(900);
+
+    // And a cannon launched later still gets it.
+    combat.update(16, 16);
+    const second = combat.launch(queue.visible[0].id)!;
+    expect(second.moveSpeed).toBe(900);
+  });
+
   it("does nothing at all with an empty rail", () => {
     const { world, combat } = setup();
     run(combat, 200);
