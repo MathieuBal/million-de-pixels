@@ -151,13 +151,15 @@ export class CombatSimulator {
     return cannon;
   }
 
-  /** Restores cannons from a save without touching the queue. */
+  /**
+   * Restores cannons from a save without touching the queue.
+   *
+   * The reserve accounting for these rounds belongs to the caller, which has
+   * just rebuilt it from the save — this only puts the cannons back on the rail.
+   */
   restoreCannons(cannons: ActiveCannon[]): void {
     this.cannons.length = 0;
-    for (const cannon of cannons) {
-      this.reserve.promoteToActive(cannon.colorId, 0);
-      this.cannons.push(cannon);
-    }
+    for (const cannon of cannons) this.cannons.push(cannon);
   }
 
   update(deltaMs: number, nowMs: number): void {
@@ -172,6 +174,15 @@ export class CombatSimulator {
     }
 
     this.removeFinishedCannons();
+
+    // A cannon that leaves the rail with rounds unspent gives them back to its
+    // colour, and nothing else in the game refills the queue: `take()` needs a
+    // tile to click and `dropExhausted()` only refills when it dropped
+    // something. Empty the queue while the rail holds everything, let one
+    // cannon give up, and the offer never came back — pixels left, no tiles,
+    // no way to play. The queue is cheap to top up when it is already full, so
+    // it is topped up every frame rather than at each place that frees rounds.
+    this.queue.refill();
   }
 
   /**

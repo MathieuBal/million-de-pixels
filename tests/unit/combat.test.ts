@@ -512,6 +512,50 @@ describe("CombatSimulator", () => {
     }
   });
 
+  it("re-offers a load when a cannon leaves the rail with rounds unspent", () => {
+    // The dead end this guards against: late in a level the queue drains
+    // because every remaining pixel is committed to the rail, then a cannon
+    // gives up on a buried colour and hands its rounds back. Nothing else
+    // refills the queue — `take()` needs a tile to click, `dropExhausted()`
+    // only refills when it dropped something — so the player was left with
+    // pixels on the board, no tiles, and no way to play on.
+    const colorId = new Uint8Array(PIXEL_COUNT).fill(DEAD);
+    for (let i = 0; i < 60; i++) colorId[500 * WORLD_WIDTH + 300 + i] = 0;
+    for (let i = 0; i < 60; i++) colorId[700 * WORLD_WIDTH + 300 + i] = 1;
+
+    const world = PixelWorld.create(makePalette(2, [60, 60]), colorId);
+    const reserve = new ColorAmmoReserve(world);
+    const queue = new CannonQueue(new CannonLoadGenerator(reserve, new XorShift32(5)), reserve);
+    queue.refill();
+    const combat = new CombatSimulator(world, queue, reserve, {}, new VisualLODController());
+
+    // The player takes everything on offer; the colours are fully committed, so
+    // the generator has nothing left to draw and the queue stays empty.
+    while (queue.visible.length > 0 && combat.hasFreeSlot) combat.launch(queue.visible[0].id);
+    expect(queue.visible).toHaveLength(0);
+
+    // A cannon gives up — exactly what a full lap without a burst does.
+    combat.activeCannons[0].retire();
+    combat.update(16, 16);
+
+    expect(world.aliveTotal()).toBeGreaterThan(0);
+    expect(queue.visible.length).toBeGreaterThan(0);
+  });
+
+  it("never leaves the player without an offer while rounds can be handed out", () => {
+    const { world, combat, queue, reserve } = setup(4, 3);
+    for (let frame = 0; frame < 600; frame++) {
+      while (queue.visible.length > 0 && combat.hasFreeSlot) {
+        if (!combat.launch(queue.visible[0].id)) break;
+      }
+      combat.update(16, frame * 16);
+
+      const assignable = [0, 1, 2, 3].reduce((sum, c) => sum + reserve.assignable(c), 0);
+      if (assignable > 0) expect(queue.visible.length).toBeGreaterThan(0);
+    }
+    expect(world.aliveTotal()).toBeGreaterThan(0);
+  });
+
   it("does nothing at all with an empty rail", () => {
     const { world, combat } = setup();
     run(combat, 200);
