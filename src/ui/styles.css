@@ -607,6 +607,73 @@ html, body {
 .run-menu-note:empty { display: none; }
 .run-menu-actions { display: flex; flex-direction: column; gap: 8px; }
 
+/* Comfort row: colour filter and auto-launch, both earned with éclats. */
+.queue-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px var(--screen-pad) 0;
+}
+.queue-tools[hidden] { display: none; }
+.color-filter { display: flex; gap: 5px; flex: 1; overflow-x: auto; padding-bottom: 2px; }
+.filter-chip {
+  flex: 0 0 auto;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 7px;
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.filter-chip[data-on="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tool-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tool-toggle[hidden] { display: none; }
+.tool-toggle[data-on="true"] { border-color: var(--accent); color: var(--accent); }
+
+.upgrade-tabs { display: flex; gap: 6px; }
+.upgrade-tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.upgrade-tab[data-active="true"] { border-color: var(--accent); color: var(--text); }
+.upgrade-family {
+  padding: 10px 2px 2px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.upgrade-head .balance .shards { margin-left: 10px; color: var(--accent); font-weight: 700; }
+/* The panel now carries a dozen axes across two tabs: it has to scroll. */
+.upgrade-rows { max-height: 46vh; overflow-y: auto; overscroll-behavior: contain; }
+
 /* --------------------------------------------------------------- 03 offline */
 
 .screen-offline { justify-content: flex-end; }
@@ -718,3 +785,64 @@ html, body {
 .upgrade-row .price:hover:not(:disabled) { filter: brightness(1.08); }
 .upgrade-row .price:active:not(:disabled) { transform: scale(0.98); }
 .upgrade-row .price:disabled { background: #202028; color: var(--muted-2); cursor: not-allowed; }
+
+/* ------------------------------------------------------------- 04 bureau */
+
+/*
+ * The reference layout is a 430 x 932 phone, and it stays the layout: on a
+ * desktop the same panels move to a column beside the board instead of being
+ * restacked into something else. The board takes everything that is left, which
+ * is the whole point of playing on a big screen — a million cells finally get
+ * the pixels to be seen with.
+ *
+ * The camera does not care about the shape: `Viewport.setArea` is handed
+ * whatever rectangle the play area ends up with, and the layout pushes the new
+ * size in on resize rather than the renderer polling for it.
+ */
+@media (min-width: 1000px) and (min-height: 560px) {
+  #app { width: 100vw; }
+
+  .screen-game {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(360px, 30vw, 460px);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+    column-gap: 4px;
+    padding-bottom: 18px;
+  }
+
+  .topbar { grid-column: 1 / -1; grid-row: 1; padding-top: 18px; }
+  .board-frame {
+    grid-column: 1;
+    grid-row: 2 / -1;
+    display: flex;
+    min-height: 0;
+    margin: 0 8px 0 var(--screen-pad);
+  }
+  /* Square is a phone constraint: here the board fills the column it is given. */
+  .play-area { aspect-ratio: auto; flex: 1; min-height: 0; }
+
+  .progress { grid-column: 2; grid-row: 2; }
+  .slots { grid-column: 2; grid-row: 3; }
+  .queue-tools { grid-column: 2; grid-row: 4; }
+  /* The row takes the leftover height, the tiles keep theirs: without this
+     eight offers stretch into columns the height of the board. */
+  .cards {
+    grid-column: 2;
+    grid-row: 5;
+    max-height: none;
+    min-height: 0;
+    align-content: start;
+  }
+  .boosters { grid-column: 2; grid-row: 6; }
+
+  /* Sheets stay sheet-sized instead of stretching across the desk. */
+  .upgrade-panel { align-items: center; justify-content: center; }
+  .upgrade-body,
+  .run-menu-body { width: min(520px, 90vw); margin: 0; }
+  .upgrade-rows { max-height: 58vh; }
+
+  .screen-import { align-items: center; }
+  .screen-import > * { width: min(560px, 100%); }
+
+  .zoom { bottom: 16px; right: 16px; }
+}

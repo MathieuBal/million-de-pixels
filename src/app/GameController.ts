@@ -32,6 +32,11 @@ import {
 } from "../rendering/VisualLODController";
 import { RNG_ALGORITHM, XorShift32 } from "../rng/XorShift32";
 import { UpgradeState, type UpgradeId } from "../progression/Upgrades";
+import {
+  MetaProgression,
+  type MetaUpgradeId,
+  type PermanentBonus,
+} from "../progression/MetaProgression";
 import { ColorStats } from "../world/ColorStats";
 import { PixelWorld } from "../world/PixelWorld";
 import { isMobileProfile } from "./FeatureDetection";
@@ -58,7 +63,7 @@ export interface GameEvents {
   onLevelReady?: (world: PixelWorld) => void;
   onMilestone?: (milestone: Milestone) => void;
   /** The board is empty. Fired once per pass, the moment the last pixel goes. */
-  onLevelCleared?: (pass: number) => void;
+  onLevelCleared?: (pass: number, shards: number) => void;
   /** The level took over and is finishing itself. Fired once per pass. */
   onFinale?: () => void;
   onOfflineReport?: (report: OfflineReport) => void;
@@ -66,6 +71,8 @@ export interface GameEvents {
 }
 
 const PROFILE_ID = "local";
+/** Settings key holding the profile's permanent progression. */
+const META_KEY = "meta:local";
 const AUTOSAVE_INTERVAL_MS = 10_000;
 
 /**
@@ -94,6 +101,7 @@ export class GameController {
   private milestones = new MilestoneTracker();
   private stats: ColorStats | null = null;
   private upgrades = new UpgradeState();
+  private meta = new MetaProgression();
   private generator: CannonLoadGenerator | null = null;
 
   private rng = new XorShift32(0x12345678);
@@ -112,6 +120,7 @@ export class GameController {
   /** The opening framing needs a real play area, which arrives a frame later. */
   private needsFraming = false;
   private saveDirty = false;
+  private autoLaunch = false;
   private lastAutosaveMs = 0;
   private detachContextHandler: (() => void) | null = null;
 
@@ -175,6 +184,23 @@ export class GameController {
     return this.stats;
   }
 
+  getMeta(): MetaProgression {
+    return this.meta;
+  }
+
+  /** What the profile hands to the level: read it, never cache it. */
+  permanentBonus(): PermanentBonus {
+    return this.meta.bonus();
+  }
+
+  buyMetaUpgrade(id: MetaUpgradeId): boolean {
+    if (!this.meta.buy(id)) return false;
+    // A permanent cannon slot has to reach the rail that is already running.
+    this.applyUpgrades();
+    void this.saveMeta();
+    return true;
+  }
+
   getUpgrades(): UpgradeState {
     return this.upgrades;
   }
@@ -183,6 +209,38 @@ export class GameController {
    * Buys one level and pushes it straight into the running game, including the
    * cannons already on the rail.
    */
+  // --- Confort ------------------------------------------------------------
+
+  /**
+   * Commits the queue to one colour, or lets it draw freely again.
+   *
+   * Unlocked by Trieuse, because it only means something to someone who has
+   * already finished a toile and knows the tedium it removes: hunting the
+   * bottleneck colour among eight random offers, pass after pass.
+   */
+  setQueueFilter(colorId: number | null): boolean {
+    if (!this.meta.bonus().canFilterQueue) return false;
+    this.generator?.setPreferredColor(colorId);
+    this.queue?.dropUnwanted(colorId);
+    this.saveDirty = true;
+    return true;
+  }
+
+  get queueFilter(): number | null {
+    return this.generator?.preferredColor ?? null;
+  }
+
+  /** Launches every offer as a slot frees, until the player turns it off. */
+  setAutoLaunch(on: boolean): boolean {
+    if (on && !this.meta.bonus().canAutoLaunch) return false;
+    this.autoLaunch = on;
+    return true;
+  }
+
+  get isAutoLaunching(): boolean {
+    return this.autoLaunch;
+  }
+
   buyUpgrade(id: UpgradeId): boolean {
     if (!this.upgrades.buy(id)) return false;
     this.applyUpgrades();
@@ -191,9 +249,10 @@ export class GameController {
   }
 
   private applyUpgrades(): void {
-    const effects = this.upgrades.effects();
+    const effects = this.upgrades.effects(this.meta.bonus());
     this.combat?.setMaxActiveCannons(effects.maxActiveCannons);
     this.combat?.tuneCannons(effects.moveSpeed);
+    this.combat?.setEffects(effects.effects);
     this.generator?.setAmmoPerLoad(effects.ammoPerLoad);
     this.queue?.setSize(effects.visibleLoads);
   }
@@ -234,8 +293,9 @@ export class GameController {
       this.rng = new XorShift32(hashString(file.name + file.size) || 0x12345678);
       this.fractionalCarry = new Array(palette.length).fill(0);
 
-      // A new image starts from the base values: upgrades are per level.
-      this.upgrades = new UpgradeState();
+      // A new image starts from the base values: upgrades are per level. What
+      // it does inherit is Héritage — the head start the profile paid for.
+      this.upgrades = new UpgradeState({}, this.meta.bonus().startingFragments);
       this.prepared = PixelWorld.create(palette, colorId);
       this.events.onLevelPrepared?.(palette, this.prepared.colorId, this.prepared.width);
     } catch (error) {
@@ -295,7 +355,7 @@ export class GameController {
   restartLevel(): boolean {
     if (!this.world) return false;
     this.completions = 0;
-    this.upgrades = new UpgradeState();
+    this.upgrades = new UpgradeState({}, this.meta.bonus().startingFragments);
     this.rebuildFromBaseImage();
     return true;
   }
@@ -371,9 +431,17 @@ export class GameController {
       () => this.board?.restore(world.palette),
     );
 
-    // The image funds its own destruction: one destroyed pixel is one fragment.
+    // The image funds its own destruction. One pixel was one fragment; the
+    // Alliage axis and the permanent Élan raise what a pixel is worth, and the
+    // remainder is carried so a ×1.05 is not silently rounded away.
+    let carry = 0;
     world.onDestroy(() => {
-      this.upgrades.earn(1);
+      carry += this.upgrades.effects(this.meta.bonus()).fragmentsPerPixel;
+      const whole = Math.floor(carry);
+      if (whole > 0) {
+        this.upgrades.earn(whole);
+        carry -= whole;
+      }
       this.saveDirty = true;
     });
 
@@ -428,6 +496,14 @@ export class GameController {
 
     if (this.phase !== "playing" || !this.combat || !this.world || !this.board) return;
 
+    if (this.autoLaunch && this.queue) {
+      // One per frame, not a loop: the rail should visibly fill rather than
+      // blink from empty to full, and a slot that frees this frame is served
+      // on the next one anyway.
+      const next = this.queue.visible[0];
+      if (next && this.combat.hasFreeSlot) this.launch(next.id);
+    }
+
     const simStart = performance.now();
     this.combat.update(deltaMs, nowMs);
     const simMs = performance.now() - simStart;
@@ -467,9 +543,13 @@ export class GameController {
 
     if (!this.clearedAnnounced && this.world.aliveTotal() === 0) {
       this.clearedAnnounced = true;
+      // Clearing a toile is the only thing that pays éclats, and it pays before
+      // the panel opens so the reward is already banked when the player sees it.
+      const shards = this.meta.recordClear(this.world.playablePixels, this.pass);
       this.saveDirty = true;
       void this.save();
-      this.events.onLevelCleared?.(this.pass);
+      void this.saveMeta();
+      this.events.onLevelCleared?.(this.pass, shards);
     }
 
     this.profiler.recordFrame(deltaMs, simMs);
@@ -550,6 +630,33 @@ export class GameController {
    * Restores the most recent level and resolves the absence before the first
    * frame, so the player comes back to an image that really was eaten into.
    */
+  /**
+   * Loads the permanent progression. Called before any level, because a level
+   * starts with the fragments Héritage grants and the cannons Socle adds.
+   */
+  async loadMeta(): Promise<void> {
+    try {
+      const snapshot = await this.saves.getSetting<ReturnType<MetaProgression["serialize"]>>(
+        META_KEY,
+      );
+      if (snapshot) this.meta = MetaProgression.restore(snapshot);
+    } catch {
+      // A profile that will not load is not a reason to refuse to play.
+    }
+  }
+
+  private async saveMeta(): Promise<void> {
+    try {
+      await this.saves.setSetting(META_KEY, this.meta.serialize());
+    } catch (error) {
+      this.events.onError?.(
+        `Progression permanente non sauvegardée : ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
   async restoreLatest(): Promise<boolean> {
     let saved: CurrentLevelSave | null = null;
     try {
@@ -650,11 +757,14 @@ export class GameController {
       stock[cannon.colorId] += cannon.ammo;
     }
 
+    // Veille and Somnambule are what an idle game's "passive" upgrades are for:
+    // they multiply what the absence produced, not what the rail does live.
+    const passive = this.upgrades.effects(this.meta.bonus()).offlineMultiplier;
     const seconds = Math.max(1, elapsedMs / 1000);
     const dps = new Array<number>(world.paletteSize).fill(0);
     for (let colour = 0; colour < dps.length; colour++) {
       if (stock[colour] === 0) continue;
-      const measured = Math.max(0, observedRateByColor[colour] ?? 0);
+      const measured = Math.max(0, observedRateByColor[colour] ?? 0) * passive;
       dps[colour] = Math.min(measured, stock[colour] / seconds);
     }
 

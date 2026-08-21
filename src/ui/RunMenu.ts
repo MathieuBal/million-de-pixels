@@ -36,6 +36,8 @@ export class RunMenu {
 
   /** Set while a destructive action waits for its confirming second click. */
   private armed: HTMLButtonElement | null = null;
+  /** Éclats the clear just paid, shown once in the completion panel. */
+  private shards = 0;
 
   constructor(private readonly game: GameController) {
     this.openButton.addEventListener("click", () => this.open());
@@ -103,7 +105,8 @@ export class RunMenu {
    * Opens on the board being cleared. The panel leads with the next pass, and
    * the run has nothing left to do behind it anyway.
    */
-  announceCleared(): void {
+  announceCleared(shards = 0): void {
+    this.shards = shards;
     this.render(true);
     this.panel.hidden = false;
   }
@@ -121,8 +124,10 @@ export class RunMenu {
     if (cleared) {
       this.title.textContent = "Image terminée";
       this.note.textContent =
-        `Le million de pixels est tombé. Le passage suivant remet l'image entière ` +
-        `en face de tout ce que tu as acheté — rien n'est perdu.`;
+        `Le million de pixels est tombé. ${this.shards} éclat${this.shards > 1 ? "s" : ""} ` +
+        `gagné${this.shards > 1 ? "s" : ""} — ils survivent à l'image et s'achètent dans ` +
+        `l'onglet Permanent. Le passage suivant remet l'image entière en face de tout ce ` +
+        `que tu as acheté.`;
       this.closeButton.textContent = "Plus tard";
     } else {
       this.title.textContent = "Partie";

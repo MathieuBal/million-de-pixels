@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node tests/e2e/smoke.mjs"
+    "e2e": "node tests/e2e/smoke.mjs",
+    "shot": "node tests/e2e/screenshot.mjs"
   },
   "dependencies": {
     "pixi.js": "8.6.6"

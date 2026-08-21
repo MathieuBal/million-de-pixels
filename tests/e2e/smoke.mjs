@@ -156,7 +156,15 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
-  check("le panneau liste les quatre axes", (await page.locator(".upgrade-row").count()) === 4);
+  check("le panneau liste les douze axes", (await page.locator(".upgrade-row").count()) === 12);
+  check("les axes sont groupes par famille", (await page.locator(".upgrade-family").count()) === 4);
+
+  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  check(
+    "l'onglet permanent liste les eclats",
+    (await page.locator(".upgrade-row").count()) === 6,
+  );
+  await page.locator('#upgrade-tabs button[data-tab="level"]').click();
 
   const balanceBefore = digits(await page.locator("#upgrade-balance").innerText());
   check("les pixels detruits financent les achats", balanceBefore > 0, `${balanceBefore} fragments`);

@@ -62,7 +62,7 @@ async function boot(): Promise<void> {
       gameScreen.renderCards();
     },
     onMilestone: (milestone) => gameScreen.announceMilestone(milestone),
-    onLevelCleared: () => runMenu.announceCleared(),
+    onLevelCleared: (_pass, shards) => runMenu.announceCleared(shards),
     onFinale: () =>
       gameScreen.notify("99,9 % — la toile se termine toute seule, munitions illimitées."),
     onOfflineReport: (report) => {
@@ -120,6 +120,8 @@ async function boot(): Promise<void> {
   if (!features.indexedDB) {
     gameScreen.notify("IndexedDB indisponible : la partie ne sera pas sauvegardée.", "error");
   }
+
+  await game.loadMeta();
 
   const restored = await game.restoreLatest().catch(() => false);
   if (!restored) importScreen.show();

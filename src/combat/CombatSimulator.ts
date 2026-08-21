@@ -7,6 +7,9 @@ import type { PixelWorld } from "../world/PixelWorld";
 import { VisualLODController } from "../rendering/VisualLODController";
 import { crossedLanes, PERIMETER } from "./Cannon";
 import { BITE_DEPTH, resolveLaneBurst, type BurstEvent } from "./LineBurst";
+import { NO_EFFECTS, resolveEffects, type EffectLoadout } from "./SpecialEffects";
+import type { Rng } from "../rng/XorShift32";
+import { XorShift32 } from "../rng/XorShift32";
 
 export interface ImpactEvent {
   x: number;
@@ -20,6 +23,8 @@ export interface CombatStats {
   lanesExamined: number;
   /** Lanes that matched and were peeled. */
   bursts: number;
+  /** Bites that also set off a specialisation. */
+  effects: number;
   destroyed: number;
 }
 
@@ -27,6 +32,14 @@ export interface CombatOptions {
   maxActiveCannons?: number;
   /** Rail speed handed to every cannon, including the ones not launched yet. */
   moveSpeed?: number;
+  /** Pierce, explosion and lightning. All zero is the plain game. */
+  effects?: EffectLoadout;
+  /**
+   * Rolls the effect chances. Its own generator, never the world's: sharing one
+   * would make the offline catch-up's draws depend on how many shots happened
+   * to fire before it, and the run would stop being reproducible.
+   */
+  rng?: Rng;
   /**
    * Cells a single lane crossing takes off. One by default: a cannon files the
    * outline as it passes. Deeper bites cut visible straight gashes across the
@@ -95,6 +108,7 @@ export class CombatSimulator {
     activeCannons: 0,
     lanesExamined: 0,
     bursts: 0,
+    effects: 0,
     destroyed: 0,
   };
 
@@ -109,6 +123,8 @@ export class CombatSimulator {
     this.options = {
       maxActiveCannons: options.maxActiveCannons ?? MAX_ACTIVE_CANNONS,
       moveSpeed: options.moveSpeed ?? CANNON_MOVE_SPEED,
+      effects: options.effects ?? NO_EFFECTS,
+      rng: options.rng ?? new XorShift32(0x5eed_1234),
       biteDepth: options.biteDepth ?? BITE_DEPTH,
       blastRadius: options.blastRadius ?? 0,
     };
@@ -129,6 +145,11 @@ export class CombatSimulator {
    */
   setBlastRadius(radius: number): void {
     this.options.blastRadius = Math.max(0, Math.round(radius));
+  }
+
+  /** Pushes the bought specialisations onto the rail. */
+  setEffects(effects: EffectLoadout): void {
+    this.options.effects = effects;
   }
 
   /**
@@ -206,6 +227,7 @@ export class CombatSimulator {
   private resetFrameStats(): void {
     this.stats.lanesExamined = 0;
     this.stats.bursts = 0;
+    this.stats.effects = 0;
     this.stats.destroyed = 0;
     this.visibleImpacts.length = 0;
     this.bursts.length = 0;
@@ -306,16 +328,36 @@ export class CombatSimulator {
       this.stats.lanesExamined++;
 
       const burst = resolveLaneBurst(this.world, cannon, aim, this.options.biteDepth);
-      if (burst.destroyed === 0) continue;
 
-      cannon.onBurst(burst.destroyed);
-      // A finale cannon was never in the ledger, so it has nothing to give back.
-      if (!cannon.unlimited) {
-        this.reserve.releaseFromActive(cannon.colorId, burst.destroyed);
+      if (burst.destroyed > 0) {
+        this.settle(cannon, burst.destroyed);
+        this.stats.bursts++;
+        this.stats.destroyed += burst.destroyed;
       }
 
-      this.stats.bursts++;
-      this.stats.destroyed += burst.destroyed;
+      // The specialisations run on every crossing, not only the productive
+      // ones: Perce exists precisely to get through a lane the bite found
+      // blocked. Every block they add still costs a round — see
+      // `SpecialEffects` for why the ledger cannot be bypassed.
+      const extra = resolveEffects(
+        this.world,
+        cannon.colorId,
+        aim,
+        burst.lastIndex,
+        this.options.effects,
+        this.options.rng,
+        cannon.unlimited ? Number.MAX_SAFE_INTEGER : cannon.ammo,
+      );
+      if (extra.destroyed > 0) {
+        this.settle(cannon, extra.destroyed);
+        this.stats.destroyed += extra.destroyed;
+        this.stats.effects++;
+        burst.destroyed += extra.destroyed;
+        if (burst.firstIndex < 0) burst.firstIndex = extra.touched[0] ?? -1;
+        this.sampleEffect(extra.touched, cannon.colorId);
+      }
+
+      if (burst.destroyed === 0) continue;
 
       if (burst.lastIndex >= 0) {
         const x = burst.lastIndex % WORLD_WIDTH;
@@ -327,6 +369,26 @@ export class CombatSimulator {
       this.sampleImpacts(burst);
 
       if (cannon.isFinished()) return;
+    }
+  }
+
+  /** Charges a cannon for what it removed, and squares the ledger. */
+  private settle(cannon: ActiveCannon, destroyed: number): void {
+    cannon.onBurst(destroyed);
+    // A finale cannon was never in the ledger, so it has nothing to give back.
+    if (!cannon.unlimited) this.reserve.releaseFromActive(cannon.colorId, destroyed);
+  }
+
+  /** Sparks for what an effect took, within the same visual budget. */
+  private sampleEffect(touched: readonly number[], colorId: number): void {
+    const granted = this.lod.sample(touched.length);
+    for (let i = 0; i < granted && i < touched.length; i++) {
+      const index = touched[i];
+      this.visibleImpacts.push({
+        x: index % WORLD_WIDTH,
+        y: (index / WORLD_WIDTH) | 0,
+        colorId,
+      });
     }
   }
 

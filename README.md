@@ -180,12 +180,22 @@ L'image finance sa propre destruction : un pixel détruit vaut un fragment. Quat
 axes, achetés dans un panneau et appliqués immédiatement — y compris aux canons
 déjà sur le rail, sans quoi un achat semblerait sans effet.
 
-| Axe | Effet | Base → max | Paliers | Coût total |
-|---|---|---|---:|---:|
-| Vitesse | voies examinées par seconde | 260 → 2 426 | 150 × +1,5 % | 594 k |
-| Rail | canons simultanés | 5 → 55 | 50 × +1 | 369 k |
-| Chargeur | munitions par case | 40 → 1 240 | 100 × +12 | 765 k |
-| Étal | cases proposées | 8 → 48 | 40 × +1 | 74 k |
+Douze axes, en quatre familles.
+
+| Famille | Axe | Effet | Base → max | Paliers |
+|---|---|---|---|---:|
+| Rail | Vitesse | voies examinées par seconde | 260 → 2 426 | 150 |
+| Rail | Rail | canons simultanés | 5 → 55 | 50 |
+| Cases | Chargeur | munitions par case | 40 → 1 240 | 100 |
+| Cases | Étal | cases proposées | 8 → 48 | 40 |
+| Économie | Alliage | fragments par pixel | ×1 → ×7 | 120 |
+| Économie | Veille | production hors-ligne | ×1 → ×7 | 80 |
+| Tirs | Perce | chance d'atteindre sa couleur derrière un obstacle | 0 → 75 % | 60 |
+| Tirs | Pointe | cellules étrangères traversées | 0 → 30 | 30 |
+| Tirs | Éclat | chance d'emporter les voisins | 0 → 60 % | 60 |
+| Tirs | Souffle | rayon de l'explosion | 0 → 20 | 20 |
+| Tirs | Foudre | chance qu'un arc saute sur un voisin | 0 → 60 % | 60 |
+| Tirs | Chaîne | sauts successifs de l'arc | 0 → 40 | 40 |
 
 **Pistes longues, petits pas.** Chaque axe court sur dix fois plus de paliers
 qu'à l'origine, chacun valant environ un dixième, avec un prix qui croît à la
@@ -197,6 +207,54 @@ pixels — soit environ deux passages.
 
 **Vitesse est l'axe de production.** Depuis que le rail est l'horloge, voies par
 seconde *est* le débit.
+
+**Les tirs spéciaux vont par paire** : une chance et une puissance. La chance dit
+à quelle fréquence le passage fait autre chose, la puissance dit jusqu'où il va.
+Acheter la puissance sans la chance ne sert à rien — c'est le choix qui est
+proposé.
+
+**Chaque bloc qu'un effet retire coûte une munition.** Ce n'est pas une
+restriction ajoutée après coup : le grand livre dit `queued + active <= alive`,
+donc une couleur ne peut jamais se voir promettre plus de munitions qu'elle n'a
+de pixels. Un effet qui détruirait gratuitement placerait durablement le grand
+livre au-dessus du plateau, et le jeu distribuerait des canons pour des couleurs
+qui n'existent plus. Les effets rendent un **passage** plus productif, jamais une
+munition.
+
+**Perce se déclenche sur une voie bloquée**, pas après une bouchée réussie :
+traverser ce qui est devant est toute sa raison d'être, et le tirer seulement
+après un tir réussi en aurait fait la seule spécialisation qui n'aide jamais
+quand on en a besoin. Il regarde au-delà d'un nombre borné de cellules
+étrangères et prend la première cellule de sa couleur derrière — **sans jamais
+détruire ce qu'il a traversé**.
+
+## Ce qui survit à une image
+
+Les améliorations sont volontairement liées à une toile : une nouvelle image doit
+repartir des valeurs de base, sinon la première passe de chaque image après la
+première serait finie avant d'avoir commencé. Restait à donner un intérêt à
+terminer une toile — ce sont les **éclats**.
+
+| Permanent | Effet |
+|---|---|
+| Héritage | fragments offerts au début de chaque image |
+| Élan | fragments par pixel, sur toutes les images |
+| Socle | canons simultanés dès le départ |
+| Somnambule | production hors-ligne, sur toutes les images |
+| Trieuse | filtrer et trier les cases par couleur |
+| Automate | lancer les cases toutes seules dès qu'un slot se libère |
+
+Les éclats sont proportionnels à l'image (`playablePixels / 50 000`) et
+augmentent avec le numéro de passage, donc une image dense vaut plus qu'un logo
+transparent et une deuxième passe rapporte encore, moins mais pas rien. Ils sont
+rangés dans le magasin de réglages, pas dans une sauvegarde de niveau, parce que
+c'est exactement ce qu'ils sont : de l'état de profil.
+
+**Trieuse et Automate se gagnent** au lieu d'être donnés. Ils ne veulent dire
+quelque chose que pour quelqu'un qui a déjà fini une toile et sait ce qui est
+pénible dans la suivante : chercher la couleur goulot parmi huit offres au
+hasard, et cliquer la même case quelques centaines de fois. Tant qu'ils ne sont
+pas achetés, la rangée n'existe pas et une première passe garde sa forme.
 
 `blastRadius` reste une option de `CombatSimulator` par défaut à zéro : c'est le
 point d'accroche du futur système d'effets, pas un axe achetable.
@@ -233,6 +291,22 @@ sur une vraie fin de niveau.
 `PixelWorld.restart()` reconstruit le niveau depuis `baseColorId`, porté depuis
 le premier commit exactement pour ça : l'image d'origine ne quitte jamais la
 mémoire, donc recommencer coûte une copie et aucun ré-import.
+
+## Écrans
+
+La mise en page de référence est un téléphone de 430 × 932, et elle le reste : sur
+un bureau, les mêmes panneaux passent dans une colonne à côté du plateau au lieu
+d'être réempilés en autre chose. Le plateau prend tout le reste, ce qui est
+l'intérêt d'un grand écran — un million de cellules obtient enfin les pixels pour
+être regardé. La caméra se moque de la forme : `Viewport.setArea` reçoit le
+rectangle que la zone de jeu occupe réellement, et la mise en page pousse la
+nouvelle taille au redimensionnement plutôt que de laisser le renderer la
+sonder.
+
+`npm run shot -- out.png 1440 900` conduit un vrai navigateur jusqu'à un état
+jouable et écrit un PNG : la mise en page est la seule partie du projet qu'aucune
+assertion ne couvre, et une grille qui s'applique techniquement peut quand même
+mettre huit offres en colonnes hautes comme le plateau.
 
 ## Mesures
 
