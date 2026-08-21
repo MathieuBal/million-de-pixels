@@ -556,6 +556,47 @@ describe("CombatSimulator", () => {
     expect(world.aliveTotal()).toBeGreaterThan(0);
   });
 
+  it("finishes the image itself once the tail is all that is left", () => {
+    // Two colours, one of them shut behind the other: the exact shape that
+    // strands a player at 99,9 %. The finale has to get through the shell.
+    const colorId = new Uint8Array(PIXEL_COUNT).fill(DEAD);
+    for (let y = 400; y < 412; y++) {
+      for (let x = 400; x < 412; x++) {
+        const border = y === 400 || y === 411 || x === 400 || x === 411;
+        colorId[y * WORLD_WIDTH + x] = border ? 1 : 0;
+      }
+    }
+    const world = PixelWorld.create(makePalette(2, [64, 44]), colorId);
+    const reserve = new ColorAmmoReserve(world);
+    const queue = new CannonQueue(new CannonLoadGenerator(reserve, new XorShift32(2)), reserve);
+    const combat = new CombatSimulator(world, queue, reserve, {}, new VisualLODController());
+
+    combat.startFinale();
+    expect(combat.isFinale).toBe(true);
+    expect(combat.activeCannons).toHaveLength(2);
+    expect(combat.activeCannons.every((c) => c.unlimited)).toBe(true);
+
+    for (let f = 0; f < 60 * 20 && world.aliveTotal() > 0; f++) combat.update(16, f * 16);
+    expect(world.aliveTotal()).toBe(0);
+    // The ledger is left balanced: a finale cannon was never in it.
+    for (let colour = 0; colour < 2; colour++) {
+      const state = reserve.stateOf(colour);
+      expect(state.queuedAmmo + state.activeAmmo).toBe(0);
+    }
+  });
+
+  it("hands the rounds back when the finale takes over the rail", () => {
+    const { combat, queue, reserve } = setup(4, 9);
+    const load = queue.visible[0];
+    combat.launch(load.id);
+    expect(reserve.stateOf(load.colorId).activeAmmo).toBeGreaterThan(0);
+
+    combat.startFinale();
+
+    expect(reserve.stateOf(load.colorId).activeAmmo).toBe(0);
+    expect(combat.hasFreeSlot).toBe(false);
+  });
+
   it("does nothing at all with an empty rail", () => {
     const { world, combat } = setup();
     run(combat, 200);

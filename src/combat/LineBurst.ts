@@ -1,6 +1,8 @@
 import type { CannonAim } from "./Cannon";
 import type { Axis, Direction } from "./axisTraversal";
 import type { PixelWorld } from "../world/PixelWorld";
+import { WORLD_HEIGHT, WORLD_WIDTH } from "../core/constants";
+
 
 export interface BurstEvent {
   cannonId: string;
@@ -21,6 +23,11 @@ export interface BurstTarget {
   id: string;
   colorId: number;
   ammo: number;
+  /**
+   * A finale cannon: the stock stops bounding the burst, the lane does. Set
+   * only by the automatic finish of a nearly-cleared image.
+   */
+  unlimited?: boolean;
 }
 
 /**
@@ -43,11 +50,14 @@ export function resolveLaneBurst(
   cannon: BurstTarget,
   aim: CannonAim,
 ): BurstEvent {
+  // A lane is at most a full row or column, so this bounds an unlimited burst
+  // without pretending its stock is infinite.
+  const capacity = cannon.unlimited ? WORLD_WIDTH * WORLD_HEIGHT : cannon.ammo;
   let destroyed = 0;
   let firstIndex = -1;
   let lastIndex = -1;
 
-  while (destroyed < cannon.ammo) {
+  while (destroyed < capacity) {
     const index = world.surface.frontIndex(aim.axis, aim.lane, aim.direction);
     if (index < 0) break;
     if (world.colorId[index] !== cannon.colorId) break;

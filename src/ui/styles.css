@@ -377,6 +377,7 @@ html, body {
   font-weight: 600;
   color: var(--accent);
 }
+.rail-token[data-dense="true"] { font-size: 0; padding: 0; width: 9px; height: 9px; }
 .rail-token[data-empty="true"] { animation: blink 600ms steps(1) infinite; }
 @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.5; } }
 
@@ -416,6 +417,11 @@ html, body {
   grid-template-columns: repeat(4, 1fr);
   gap: var(--gutter);
   padding: 10px var(--screen-pad) 0;
+  /* The étal upgrade runs to forty-eight tiles, so the row that held eight has
+     to become a scrolling area rather than push the boosters off screen. */
+  max-height: 172px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .cards button {
   display: flex;

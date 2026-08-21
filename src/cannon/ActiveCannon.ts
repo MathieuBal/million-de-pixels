@@ -18,6 +18,15 @@ export interface ActiveCannonState {
 export const CANNON_MOVE_SPEED = 260;
 
 /**
+ * Rail speed of a finale cannon, in cells per second.
+ *
+ * The finale is an outro, not a fight: it runs at a speed no upgrade track
+ * reaches so the last thousandth of an image falls in seconds rather than
+ * minutes.
+ */
+export const FINALE_MOVE_SPEED = 4096;
+
+/**
  * A cannon actually on the rail.
  *
  * It carries a finite stock of rounds of one colour, travels the perimeter,
@@ -48,7 +57,24 @@ export class ActiveCannon {
   /** Set when the colour ran out under it: the mission ends immediately. */
   private retired = false;
 
-  constructor(load: CannonLoad, trackPosition: number, state?: Partial<ActiveCannonState>) {
+  /**
+   * A finale cannon: no stock to spend, no lap timeout, no line in the reserve.
+   *
+   * It exists only for the automatic finish of a nearly-cleared image, where
+   * the ammunition economy has stopped meaning anything — a colour down to
+   * eleven pixels cannot fund a cannon worth launching. Everything else about
+   * it is a normal cannon: it rides the rail, and it peels real lanes from the
+   * surface inwards. Nothing is ever deleted off a lane.
+   */
+  readonly unlimited: boolean;
+
+  constructor(
+    load: CannonLoad,
+    trackPosition: number,
+    state?: Partial<ActiveCannonState>,
+    unlimited = false,
+  ) {
+    this.unlimited = unlimited;
     this.id = load.id;
     this.colorId = load.colorId;
     this.maxAmmo = state?.maxAmmo ?? load.ammo;
@@ -66,7 +92,9 @@ export class ActiveCannon {
     this.trackPosition = (this.trackPosition + travelled) % PERIMETER;
 
     this.distanceSinceBurst += travelled;
-    if (this.distanceSinceBurst > PERIMETER) this.retire();
+    // A finale cannon never gives up on a buried colour: the layer in front of
+    // it is being peeled by the other finale cannons, so its turn comes.
+    if (!this.unlimited && this.distanceSinceBurst > PERIMETER) this.retire();
 
     return travelled;
   }
@@ -87,7 +115,7 @@ export class ActiveCannon {
   /** Spends what a burst removed, and resets the idle-lap counter. */
   onBurst(destroyed: number): void {
     if (destroyed <= 0) return;
-    this.ammo = Math.max(0, this.ammo - destroyed);
+    if (!this.unlimited) this.ammo = Math.max(0, this.ammo - destroyed);
     this.distanceSinceBurst = 0;
   }
 
@@ -102,7 +130,7 @@ export class ActiveCannon {
 
   /** Off the rail once the stock is spent, or the colour disappeared. */
   isFinished(): boolean {
-    return this.retired || this.ammo === 0;
+    return this.retired || (!this.unlimited && this.ammo === 0);
   }
 
   serialize(): ActiveCannonState {

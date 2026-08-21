@@ -26,9 +26,13 @@ export interface UpgradeDefinition {
  * The four axes a player can push, in two families.
  *
  * Speed leads, because the rail is the clock: every lane a cannon crosses is an
- * opportunity, so cells per second are lanes examined per second. Many small
- * steps rather than a few large ones — the player should feel the rail turn
- * faster often.
+ * opportunity, so cells per second are lanes examined per second.
+ *
+ * **Long tracks, small steps.** Every axis runs ten times as many levels as it
+ * first did, each worth roughly a tenth as much, with the price growing at the
+ * matching tenth-root. The ceilings end up higher than before, but that is a
+ * side effect: the point is that there is always a next level within reach, and
+ * that no axis quietly stops being buyable halfway through a pass.
  *
  * Every number here is an opening value to balance, not a rule.
  */
@@ -39,10 +43,10 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Vitesse",
     glyph: "⌁",
     description: "Voies examinées par seconde",
-    maxLevel: 15,
+    maxLevel: 150,
     basePrice: 120,
-    priceGrowth: 1.45,
-    valueAt: (level) => Math.round(CANNON_MOVE_SPEED * 1.08 ** level),
+    priceGrowth: 1.035,
+    valueAt: (level) => Math.round(CANNON_MOVE_SPEED * 1.015 ** level),
     format: (value) => `${value} voies/s`,
   },
   {
@@ -51,9 +55,9 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Rail",
     glyph: "+1",
     description: "Canons simultanés sur le rail",
-    maxLevel: 5,
+    maxLevel: 50,
     basePrice: 600,
-    priceGrowth: 2.2,
+    priceGrowth: 1.082,
     valueAt: (level) => MAX_ACTIVE_CANNONS + level,
     format: (value) => `${value} canons`,
   },
@@ -63,10 +67,10 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Chargeur",
     glyph: "◲",
     description: "Billes par case",
-    maxLevel: 10,
+    maxLevel: 100,
     basePrice: 200,
-    priceGrowth: 1.8,
-    valueAt: (level) => DEFAULT_LOAD_AMMO + level * 25,
+    priceGrowth: 1.055,
+    valueAt: (level) => DEFAULT_LOAD_AMMO + level * 12,
     format: (value) => `${value} billes`,
   },
   {
@@ -75,9 +79,9 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Étal",
     glyph: "▤",
     description: "Cases proposées",
-    maxLevel: 4,
+    maxLevel: 40,
     basePrice: 350,
-    priceGrowth: 2.0,
+    priceGrowth: 1.072,
     valueAt: (level) => VISIBLE_LOADS + level,
     format: (value) => `${value} cases`,
   },

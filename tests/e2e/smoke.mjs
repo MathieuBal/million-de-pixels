@@ -224,6 +224,25 @@ try {
   await page.keyboard.press("Alt+d");
   console.log(`        ${bought} ameliorations achetees · ${rateBefore} → ${rateAfter} blocs/s`);
 
+  console.log("\n— sorties de partie —");
+  await page.locator("#menu").click();
+  await page.waitForSelector("#run-menu:not([hidden])", { timeout: 10000 });
+  check("le menu offre de recommencer", await page.locator("#run-restart").isVisible());
+  check("le menu offre de changer d'image", await page.locator("#run-change").isVisible());
+  check(
+    "le passage suivant reste ferme tant que l'image tient",
+    !(await page.locator("#run-next").isVisible()),
+  );
+
+  // Two clicks to fire: the first only arms the button.
+  await page.locator("#run-change").click();
+  check(
+    "une action destructrice demande confirmation",
+    (await page.locator("#run-change").getAttribute("data-armed")) === "true",
+  );
+  await page.locator("#run-menu-close").click();
+  check("le menu se referme", await page.locator("#run-menu").isHidden());
+
   console.log("\n— persistance et hors-ligne —");
   // Wait for the rail to go quiet, then for one autosave window on top of it.
   // The save is throttled, so reading the live counter while blocks are still
