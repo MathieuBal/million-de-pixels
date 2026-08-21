@@ -330,6 +330,9 @@ html, body {
   cursor: pointer;
 }
 .icon-button i { width: 3px; height: 13px; border-radius: 1px; background: var(--text-2); }
+/* Same box as the pause button, three bars laid flat instead of two upright. */
+.icon-menu { flex-direction: column; gap: 3px; }
+.icon-menu i { width: 15px; height: 2px; }
 
 /* The play area is a hole in the DOM: the Pixi canvas shows through it. */
 .board-frame {
@@ -563,6 +566,40 @@ html, body {
 }
 .debug tr[data-flag="bottleneck"] .share { color: var(--accent); }
 .debug tr[data-flag="waste"] .dps { color: #ff6b6b; }
+
+.ghost-button {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--raise);
+  border: 1px solid var(--line-2);
+  color: var(--text);
+  font-family: var(--sans);
+  cursor: pointer;
+  transition: border-color 120ms ease-out, background 120ms ease-out;
+}
+.ghost-button:hover:not(:disabled) { border-color: var(--accent); }
+.ghost-button:disabled { opacity: 0.45; cursor: not-allowed; }
+.ghost-button .label { font-size: 15px; font-weight: 600; }
+.ghost-button .hint { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.ghost-button[data-armed="true"] { border-color: #ff6b6b; }
+.ghost-button[data-armed="true"] .label { color: #ff6b6b; }
+
+.run-menu-body {
+  position: relative;
+  margin: 0 var(--screen-pad) 22px;
+  width: calc(100% - var(--screen-pad) * 2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+}
+.run-menu-note { font-size: 13px; color: var(--muted); line-height: 1.45; }
+.run-menu-note:empty { display: none; }
+.run-menu-actions { display: flex; flex-direction: column; gap: 8px; }
 
 /* --------------------------------------------------------------- 03 offline */
 

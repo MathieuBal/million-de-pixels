@@ -3,6 +3,7 @@ import { GameController } from "./app/GameController";
 import { detectFeatures } from "./app/FeatureDetection";
 import { GameScreen } from "./ui/GameScreen";
 import { ImportScreen } from "./ui/ImportScreen";
+import { RunMenu } from "./ui/RunMenu";
 import { OfflineScreen } from "./ui/OfflineScreen";
 import { ViewportControls } from "./ui/ViewportControls";
 
@@ -34,6 +35,7 @@ async function boot(): Promise<void> {
   let gameScreen: GameScreen;
   let importScreen: ImportScreen;
   let offlineScreen: OfflineScreen;
+  let runMenu: RunMenu;
   let syncBoard: () => void;
 
   const game: GameController = new GameController(app, {
@@ -46,6 +48,8 @@ async function boot(): Promise<void> {
         syncBoard();
       } else {
         gameScreen.hide();
+        // A level set aside is still there: the import screen says so.
+        importScreen.setResumable(game.canResume);
         importScreen.show();
       }
     },
@@ -58,6 +62,7 @@ async function boot(): Promise<void> {
       gameScreen.renderCards();
     },
     onMilestone: (milestone) => gameScreen.announceMilestone(milestone),
+    onLevelCleared: () => runMenu.announceCleared(),
     onOfflineReport: (report) => {
       const world = game.getWorld();
       if (world) offlineScreen.show(report, world.palette);
@@ -72,7 +77,10 @@ async function boot(): Promise<void> {
   gameScreen = new GameScreen(game);
   offlineScreen = new OfflineScreen(() => {});
 
+  runMenu = new RunMenu(game);
+
   importScreen.onStart(() => game.startPreparedLevel());
+  importScreen.onResume(() => game.resume());
 
   const zoomLevel = document.getElementById("zoom-level") as HTMLOutputElement;
   const showZoom = (): void => {
@@ -114,7 +122,7 @@ async function boot(): Promise<void> {
   const restored = await game.restoreLatest().catch(() => false);
   if (!restored) importScreen.show();
 
-  Object.assign(window, { __game: game, __controls: controls });
+  Object.assign(window, { __game: game, __controls: controls, __menu: runMenu });
 }
 
 function fatal(message: string): void {

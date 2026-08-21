@@ -105,6 +105,19 @@ export class PixelWorld {
     );
   }
 
+  /**
+   * The level as it was imported, whole again.
+   *
+   * `baseColorId` has been carried since the first commit for exactly this: the
+   * pristine image never leaves memory, so restarting costs one copy and no
+   * re-import. A fresh world rather than a mutation in place, because every
+   * index — colours, macro-tiles, surface — is built in the constructor and
+   * would otherwise have to be invalidated by hand.
+   */
+  restart(): PixelWorld {
+    return PixelWorld.create(this.palette, this.baseColorId.slice());
+  }
+
   onDestroy(listener: DestructionListener | null): void {
     this.listener = listener;
   }
