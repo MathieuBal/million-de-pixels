@@ -34,6 +34,7 @@ via une texture → faire orbiter un canon → détruire les bonnes couleurs →
 | Throttling des uploads | fait |
 | Canon patrouillant le cadre | fait |
 | Caméra : zoom molette/pincement, pan, vue d'ensemble | fait |
+| Améliorations : 6 axes, panneau, économie en pixels détruits | fait |
 | Habillage jeu portrait 430×932 (3 écrans) | fait |
 | Parcours ligne/colonne à pas fixe | fait |
 | Collision couleur + pierce/ricochet | fait |
@@ -108,7 +109,7 @@ Les gros buffers circulent en **transfert** (`postMessage` + transfer list), pas
 | `baseColorId`, `colorId`, `hp`, `flags` | `Uint8Array` ×4 | 4 MiB |
 | `pixelsByColor`, `slotOfPixel` | `Uint32Array` ×2 | 8 MiB |
 | Macro-tuiles 32×32 | `Uint16Array` | 32 KiB |
-| Voies (lignes + colonnes) × couleurs | `Uint16Array` | 64 KiB |
+| Surface (4 sens × voies) | `Int16Array` | 8 KiB |
 | Texture GPU R8 | — | ≈1 MiB |
 
 Les 8 MiB d'index sont **dérivés** : reconstruits depuis `colorId` en O(N) au
@@ -145,10 +146,41 @@ production est intégrée analytiquement par couleur, la fraction résiduelle es
 conservée d'une session à l'autre, et les hits résultants **suppriment de vrais
 pixels** via l'index. On revient sur une image rongée, pas sur une jauge.
 
-**Traversée plutôt que rebond.** Une bille traverse les couleurs qui ne sont pas la
-sienne (`foreignColorPolicy: "pass-through"`). C'est un paramètre de game design, pas
-une contrainte technique — mais avec `bounce`, le premier pixel étranger absorbe le
-tir et une bille ne peut jamais atteindre sa couleur au-delà du bord de l'image.
+**La surface protège ce qu'il y a derrière.** Une bille s'arrête sur la première
+cellule pleine qu'elle rencontre, quelle qu'en soit la couleur : si c'est la sienne
+elle la détruit, sinon le tir est bloqué. Seuls les trous laissés par les tirs
+précédents et les marges transparentes se traversent.
+
+C'est ce qui donne du poids à la géométrie de l'image : ce qui est enterré est
+inatteignable d'un côté tant que la façade tient, et un canon doit parfois faire le
+tour du cadre — ou attendre qu'une autre couleur soit dégagée — avant d'avoir un tir.
+`SurfaceIndex` répond en une lecture à « quelle cellule me fait face ? », donc le
+canon retient son feu au lieu d'envoyer des billes dans un mur. Un canon qui boucle
+un tour complet sans tirer quitte le rail : sans ça une couleur totalement enterrée
+immobiliserait un slot à vie.
+
+## Améliorations
+
+L'image finance sa propre destruction : un pixel détruit vaut un fragment. Six
+axes, en deux familles, achetés dans un panneau et appliqués immédiatement — y
+compris aux canons déjà sur le rail, sans quoi un achat semblerait sans effet.
+
+| Axe | Effet | Base |
+|---|---|---|
+| Cadence | intervalle entre deux billes | 140 ms |
+| Vitesse | déplacement sur le rail | 260 c/s |
+| Explosion | rayon d'impact, sur la couleur visée | 1 bloc |
+| Rail | canons simultanés | 5 |
+| Chargeur | billes par case | 40 |
+| Étal | cases proposées | 8 |
+
+L'explosion est le seul axe qui élargit la règle fondamentale : au niveau zéro
+une bille détruit exactement un bloc, et l'amélioration seule y déroge — jamais
+au-delà de la couleur visée, sans quoi l'économie par couleur s'effondrerait.
+
+La portée est le niveau : une nouvelle image repart des valeurs de base, et rien
+n'exige de méta-progression. **Tous les prix et paliers sont des valeurs
+d'ouverture à équilibrer.**
 
 ## Mesures
 

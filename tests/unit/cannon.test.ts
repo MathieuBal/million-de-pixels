@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Cannon, PERIMETER, aimAt } from "../../src/combat/Cannon";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../../src/core/constants";
-import { LaneIndex } from "../../src/world/LaneIndex";
 
 describe("Cannon", () => {
   it("covers the four edges over one lap", () => {
@@ -63,56 +62,5 @@ describe("Cannon", () => {
     const restored = new Cannon(cannon.serialize());
     expect(restored.position).toBeCloseTo(1234.5, 6);
     expect(restored.speed).toBe(310);
-  });
-});
-
-describe("LaneIndex", () => {
-  const PALETTE = 3;
-
-  function build(): { colorId: Uint8Array; index: LaneIndex } {
-    const colorId = new Uint8Array(WORLD_WIDTH * WORLD_HEIGHT);
-    // Colour c occupies row c only; every other row is colour 2.
-    for (let y = 0; y < WORLD_HEIGHT; y++) {
-      for (let x = 0; x < WORLD_WIDTH; x++) {
-        colorId[y * WORLD_WIDTH + x] = y < 2 ? y : 2;
-      }
-    }
-    return { colorId, index: LaneIndex.build(colorId, PALETTE) };
-  }
-
-  it("counts a full row and a full column", () => {
-    const { index } = build();
-    expect(index.count("row", 0, 0)).toBe(WORLD_WIDTH);
-    expect(index.count("row", 0, 1)).toBe(0);
-    // Every column crosses row 0 exactly once.
-    expect(index.count("column", 5, 0)).toBe(1);
-    expect(index.count("column", 5, 2)).toBe(WORLD_HEIGHT - 2);
-  });
-
-  it("answers lane occupancy without scanning", () => {
-    const { index } = build();
-    expect(index.hasColor("row", 1, 1)).toBe(true);
-    expect(index.hasColor("row", 1, 0)).toBe(false);
-  });
-
-  it("drops to zero once a lane is emptied", () => {
-    const { index } = build();
-    for (let x = 0; x < WORLD_WIDTH; x++) index.decrement(x, 0, 0);
-    expect(index.hasColor("row", 0, 0)).toBe(false);
-    expect(index.count("column", 3, 0)).toBe(0);
-  });
-
-  it("never underflows below zero", () => {
-    // decrement() is a raw primitive: exactly-once is guaranteed upstream by
-    // PixelWorld.destroy, but the counter must still never wrap around.
-    const { index } = build();
-    for (let x = 0; x < WORLD_WIDTH; x++) index.decrement(x, 1, 1);
-    index.decrement(0, 1, 1);
-    expect(index.count("row", 1, 1)).toBe(0);
-  });
-
-  it("reports nothing for a colour outside the palette", () => {
-    const { index } = build();
-    expect(index.count("row", 0, 254)).toBe(0);
   });
 });

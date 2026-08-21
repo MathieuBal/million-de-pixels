@@ -157,19 +157,18 @@
 
         <div id="cards" class="cards"></div>
 
-        <div class="boosters">
-          <button class="booster" type="button" disabled>
-            <span class="glyph">×2</span><span class="label">cadence</span>
-          </button>
-          <button class="booster" type="button" disabled>
-            <span class="glyph">⌖</span><span class="label">visée</span>
-          </button>
-          <button class="booster" type="button" disabled>
-            <span class="glyph">▦</span><span class="label">salve</span>
-          </button>
-          <button class="booster" type="button" disabled>
-            <span class="glyph">+1</span><span class="label">slot</span>
-          </button>
+        <div id="boosters" class="boosters"></div>
+
+        <div id="upgrade-panel" class="upgrade-panel" hidden>
+          <div class="upgrade-scrim"></div>
+          <div class="panel upgrade-body">
+            <div class="upgrade-head">
+              <span class="title">Améliorations</span>
+              <span class="balance"><i></i><span id="upgrade-balance">0</span></span>
+            </div>
+            <div id="upgrade-rows" class="upgrade-rows"></div>
+            <button id="upgrade-close" class="cta" type="button">Reprendre</button>
+          </div>
         </div>
 
         <p id="toast" class="toast" hidden></p>

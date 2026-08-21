@@ -1,8 +1,8 @@
 import type { GameController } from "../app/GameController";
 import type { Milestone } from "../app/milestones";
-import { MAX_ACTIVE_CANNONS } from "../combat/CombatSimulator";
 import { PERIMETER } from "../combat/Cannon";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../core/constants";
+import { UpgradePanel } from "./UpgradePanel";
 import { cssColor, formatCompact, formatCount, formatPercent, inkOn } from "./format";
 
 /** Colour blocks shown under the progress bar. The full table lives in debug. */
@@ -38,15 +38,16 @@ export class GameScreen {
   private readonly perfList = document.getElementById("perf-list") as HTMLElement;
   private readonly colorTableBody = document.querySelector("#color-table tbody") as HTMLElement;
 
+  readonly upgrades: UpgradePanel;
+
   private toastTimer = 0;
   private lastSampleMs = 0;
   private cardSignature = "";
   private lastArea = "";
 
   constructor(private readonly game: GameController) {
-    for (let i = 0; i < MAX_ACTIVE_CANNONS; i++) {
-      this.slots.appendChild(document.createElement("div"));
-    }
+    this.upgrades = new UpgradePanel(game);
+
     window.addEventListener("keydown", (event) => {
       if (event.key === "d" && event.altKey) this.toggleDebug();
     });
@@ -116,7 +117,8 @@ export class GameScreen {
     const alive = world.aliveTotal();
     this.aliveCount.textContent = formatCount(alive);
     this.playableCount.textContent = formatCount(world.playablePixels);
-    this.coinCount.textContent = formatCount(world.destroyedCount());
+    // The counter is the spendable balance, not the running total.
+    this.coinCount.textContent = formatCount(this.game.getUpgrades().balance);
 
     const progress = world.progress();
     this.progressFill.style.width = `${(progress * 100).toFixed(2)}%`;
@@ -125,6 +127,7 @@ export class GameScreen {
     this.renderColorStats();
     this.renderSlots();
     this.renderCards();
+    this.upgrades.update();
 
     if (!this.debugPanel.hidden) this.renderDebug();
   }
@@ -187,6 +190,15 @@ export class GameScreen {
     const combat = this.game.getCombat();
     const world = this.game.getWorld();
     if (!combat || !world) return;
+
+    // The rail upgrade adds slots, so the row is sized from capacity.
+    const capacity = combat.maxActiveCannons;
+    while (this.slots.childElementCount < capacity) {
+      this.slots.appendChild(document.createElement("div"));
+    }
+    while (this.slots.childElementCount > capacity) {
+      this.slots.lastElementChild!.remove();
+    }
 
     const cannons = combat.activeCannons;
     for (let i = 0; i < this.slots.childElementCount; i++) {

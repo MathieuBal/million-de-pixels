@@ -20,7 +20,7 @@ export interface CombatStats {
   shotsFired: number;
   destroyed: number;
   cellsTraversed: number;
-  /** Shots that crossed a whole lane without finding their colour. */
+  /** Shots stopped by another colour, or that ran off the far edge. */
   misses: number;
 }
 
@@ -28,6 +28,8 @@ export interface CombatOptions {
   maxActiveCannons?: number;
   /** Ball speed in cells per second. */
   projectileSpeed?: number;
+  /** Cells around the impact also destroyed, of the same colour only. */
+  blastRadius?: number;
 }
 
 /** Opening value, to test rather than to treat as balance. */
@@ -38,14 +40,21 @@ const PROJECTILE_SPEED = 1400;
  * Drives the cannons currently on the rail.
  *
  * The rule the whole design rests on: **one ball destroys at most one block**.
- * A ball travels its lane, passes straight through every colour that is not
- * its own, kills the first matching cell it meets, and disappears. Nothing is
- * ever destroyed off the ball's trajectory — no aggregate command, no random
- * pick by colour. `destroyRandomOfColor` has no business in live combat; it
- * stays for the offline catch-up, where nobody is watching the shots.
+ * A ball travels its lane and stops at the first solid cell it meets, whatever
+ * its colour. If that cell is the cannon's colour it dies; otherwise the shot
+ * is blocked and nothing happens. Holes left by earlier hits, and the
+ * transparent margins, are the only things a ball passes through.
  *
- * A round is only spent on a hit, and a cannon only fires when the lane it
- * faces actually holds its colour, so a stock of forty is forty blocks.
+ * That makes the image's own layering matter: what is behind the front is
+ * unreachable from that side until the front is gone, so a cannon may have to
+ * come round to another edge — or wait for another colour to be cleared —
+ * before it has a shot. Nothing is ever destroyed off the ball's trajectory:
+ * no aggregate command, no random pick by colour. `destroyRandomOfColor` has
+ * no business in live combat; it stays for the offline catch-up, where nobody
+ * is watching the shots.
+ *
+ * A round is only spent on a hit, and a cannon only fires when the cell facing
+ * it is its own colour, so a stock of forty is forty blocks.
  */
 export class CombatSimulator {
   readonly pool = new ProjectilePool(512);
@@ -77,6 +86,7 @@ export class CombatSimulator {
     this.options = {
       maxActiveCannons: options.maxActiveCannons ?? MAX_ACTIVE_CANNONS,
       projectileSpeed: options.projectileSpeed ?? PROJECTILE_SPEED,
+      blastRadius: options.blastRadius ?? 0,
     };
   }
 
@@ -84,8 +94,30 @@ export class CombatSimulator {
     return this.cannons;
   }
 
+  setMaxActiveCannons(count: number): void {
+    this.options.maxActiveCannons = Math.max(1, Math.round(count));
+  }
+
+  /**
+   * Widens what a single ball takes out. Zero — the base game — is the strict
+   * "one ball, one block" rule; above that the blast still only touches the
+   * cannon's own colour, or the per-colour economy would collapse.
+   */
+  setBlastRadius(radius: number): void {
+    this.options.blastRadius = Math.max(0, Math.round(radius));
+  }
+
+  /** Pushes bought upgrades onto the cannons already travelling. */
+  tuneCannons(fireIntervalMs: number, moveSpeed: number): void {
+    for (const cannon of this.cannons) cannon.tune(fireIntervalMs, moveSpeed);
+  }
+
   get hasFreeSlot(): boolean {
     return this.cannons.length < this.options.maxActiveCannons;
+  }
+
+  get maxActiveCannons(): number {
+    return this.options.maxActiveCannons;
   }
 
   /**
@@ -176,17 +208,20 @@ export class CombatSimulator {
   }
 
   /**
-   * Fires at most one ball, and only into a lane that still holds the colour.
+   * Fires at most one ball, and only when the cell facing the cannon is its own
+   * colour.
    *
-   * This is what makes a stock of forty rounds mean forty blocks: the lane
-   * index answers in one read, so a cannon crossing empty stretches of the
-   * image simply holds its fire instead of burning its supply.
+   * Since a ball stops at the first solid cell, having the colour somewhere
+   * down the lane is not enough — it has to be the one exposed. The surface
+   * index answers that in one read, so a cannon whose colour is buried simply
+   * holds its fire and keeps travelling rather than throwing balls at a wall.
    */
   private maybeFire(cannon: ActiveCannon): void {
     if (!cannon.canFire()) return;
 
     const aim = cannon.aim();
-    if (!this.world.lanes.hasColor(aim.axis, aim.lane, cannon.colorId)) return;
+    const front = this.world.surface.frontIndex(aim.axis, aim.lane, aim.direction);
+    if (front < 0 || this.world.colorId[front] !== cannon.colorId) return;
 
     const size = axisLength(aim.axis, WORLD_WIDTH, WORLD_HEIGHT);
     const spawned = this.pool.spawn({
@@ -222,7 +257,8 @@ export class CombatSimulator {
         return;
       }
 
-      let consumed = false;
+      let hit = false;
+      let blocked = false;
 
       traverseAxis(
         projectile.axis,
@@ -235,27 +271,69 @@ export class CombatSimulator {
         (cx, cy, index) => {
           this.stats.cellsTraversed++;
 
+          // Holes and transparent margins are the only things a ball crosses.
           const cell = this.world.colorId[index];
-          // Foreign colours are transparent: without this, the outer layers of
-          // an image would shield everything underneath from ever being hit.
-          if (cell !== projectile.colorId) return false;
           if (cell === DEAD || cell === VOID) return false;
 
-          if (this.world.destroy(index)) {
+          // First solid cell on the path. It either matches and dies, or it
+          // stops the shot — the surface is what shields what lies behind.
+          if (cell === projectile.colorId && this.world.destroy(index)) {
             this.stats.destroyed++;
+            this.stats.destroyed += this.blast(cx, cy, projectile.colorId);
             this.creditHit(projectile);
             if (this.lod.sample(1) > 0) {
               this.visibleImpacts.push({ x: cx, y: cy, colorId: projectile.colorId });
             }
-            consumed = true;
-            return true;
+            hit = true;
+          } else {
+            blocked = true;
           }
-          return false;
+          return true;
         },
       );
 
-      if (consumed) this.pool.release(projectile);
+      if (hit) {
+        this.pool.release(projectile);
+      } else if (blocked) {
+        // Another ball reached this cell first and exposed a colour that is not
+        // ours. No round is spent on a blocked shot.
+        this.creditMiss(projectile);
+        this.pool.release(projectile);
+      }
     });
+  }
+
+  /**
+   * Destroys cells of the same colour around an impact.
+   *
+   * A span-filled disc bounded by the radius: at radius 0 — the base game —
+   * this does nothing at all, so "one ball, one block" holds until the player
+   * pays to widen it. Foreign colours inside the blast are never touched.
+   */
+  private blast(cx: number, cy: number, colorId: number): number {
+    const radius = this.options.blastRadius;
+    if (radius <= 0) return 0;
+
+    const r2 = radius * radius;
+    let destroyed = 0;
+
+    const yMin = Math.max(0, cy - radius);
+    const yMax = Math.min(WORLD_HEIGHT - 1, cy + radius);
+
+    for (let y = yMin; y <= yMax; y++) {
+      const dy = y - cy;
+      const half = Math.floor(Math.sqrt(Math.max(0, r2 - dy * dy)));
+      const xMin = Math.max(0, cx - half);
+      const xMax = Math.min(WORLD_WIDTH - 1, cx + half);
+
+      for (let x = xMin; x <= xMax; x++) {
+        const index = y * WORLD_WIDTH + x;
+        if (this.world.colorId[index] !== colorId) continue;
+        if (this.world.destroy(index)) destroyed++;
+      }
+    }
+
+    return destroyed;
   }
 
   private creditHit(projectile: Projectile): void {

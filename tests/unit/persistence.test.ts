@@ -4,7 +4,7 @@ import { SaveRepository } from "../../src/persistence/SaveRepository";
 import { migrate } from "../../src/persistence/migrations";
 import { SAVE_SCHEMA_VERSION, type CurrentLevelSave } from "../../src/persistence/schema";
 import { RNG_ALGORITHM } from "../../src/rng/XorShift32";
-import type { PaletteEntry } from "../../src/core/constants";
+import { DEAD, type PaletteEntry } from "../../src/core/constants";
 import { makePalette } from "../fixtures/palette";
 
 const W = 32;
@@ -35,6 +35,7 @@ function makeSave(overrides: Partial<CurrentLevelSave> = {}): CurrentLevelSave {
       { id: "load-1", colorId: 0, ammo: 40 },
       { id: "load-2", colorId: 1, ammo: 40 },
     ],
+    upgrades: { levels: { cadence: 2 }, earned: 5000, spent: 1200 },
     cannons: [
       {
         id: "load-0",
@@ -78,6 +79,8 @@ describe("SaveRepository", () => {
     expect(loaded!.cannons).toHaveLength(1);
     expect(loaded!.cannons[0].ammo).toBe(17);
     expect(loaded!.cannons[0].trackPosition).toBeCloseTo(1200, 10);
+    expect(loaded!.upgrades.levels.cadence).toBe(2);
+    expect(loaded!.upgrades.earned).toBe(5000);
   });
 
   it("returns null for an unknown level", async () => {
@@ -118,7 +121,7 @@ describe("save migration", () => {
   });
 
   it("walks a v1 save all the way to the current version", () => {
-    const { loads: _l, cannons: _c, ...rest } = makeSave();
+    const { loads: _l, cannons: _c, upgrades: _u, ...rest } = makeSave();
     const v1 = {
       ...rest,
       schemaVersion: 1 as const,
@@ -136,8 +139,22 @@ describe("save migration", () => {
     expect("deck" in migrated).toBe(false);
   });
 
+  it("seeds fragments from the pixels a v3 save already destroyed", () => {
+    const { upgrades: _u, ...rest } = makeSave();
+    const colorId = new Uint8Array(CELLS);
+    for (let i = 0; i < CELLS; i++) colorId[i] = i % 4 === 0 ? DEAD : i % 2;
+
+    const v3 = { ...rest, schemaVersion: 3 as const, colorId: colorId.buffer };
+    const migrated = migrate(v3 as never);
+
+    expect(migrated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+    expect(migrated.upgrades.levels).toEqual({});
+    expect(migrated.upgrades.earned).toBe(CELLS / 4);
+    expect(migrated.upgrades.spent).toBe(0);
+  });
+
   it("drops the v2 deck without touching the board", () => {
-    const { loads: _l, cannons: _c, ...rest } = makeSave();
+    const { loads: _l, cannons: _c, upgrades: _u, ...rest } = makeSave();
     const v2 = {
       ...rest,
       schemaVersion: 2 as const,

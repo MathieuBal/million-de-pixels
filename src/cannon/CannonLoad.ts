@@ -68,8 +68,13 @@ export class CannonLoadGenerator {
   constructor(
     private readonly reserve: ColorAmmoReserve,
     private readonly rng: Rng,
-    private readonly ammoPerLoad = DEFAULT_LOAD_AMMO,
+    private ammoPerLoad = DEFAULT_LOAD_AMMO,
   ) {}
+
+  /** Loads already in the queue keep the stock they were drawn with. */
+  setAmmoPerLoad(ammo: number): void {
+    this.ammoPerLoad = Math.max(1, Math.round(ammo));
+  }
 
   /** Returns null when no colour can supply a single round any more. */
   next(): CannonLoad | null {

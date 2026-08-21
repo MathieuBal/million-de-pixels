@@ -15,7 +15,10 @@ import { ColorAmmoReserve } from "../cannon/ColorAmmoReserve";
 import { ImageWorkerClient, type ImageProgress } from "../image/ImageWorkerClient";
 import type { ImageProcessOptions } from "../image/ImageProtocol";
 import { IdleWorkerClient } from "../idle/IdleWorkerClient";
-import { DEFAULT_MAX_OFFLINE_MS } from "../idle/IdleProtocol";
+import {
+  DEFAULT_MAX_OFFLINE_MS,
+  OFFLINE_REPORT_THRESHOLD_MS,
+} from "../idle/IdleProtocol";
 import { SaveRepository } from "../persistence/SaveRepository";
 import type { CurrentLevelSave } from "../persistence/schema";
 import { SAVE_SCHEMA_VERSION } from "../persistence/schema";
@@ -28,6 +31,7 @@ import {
   VisualLODController,
 } from "../rendering/VisualLODController";
 import { RNG_ALGORITHM, XorShift32 } from "../rng/XorShift32";
+import { UpgradeState, type UpgradeId } from "../progression/Upgrades";
 import { ColorStats } from "../world/ColorStats";
 import { PixelWorld } from "../world/PixelWorld";
 import { isMobileProfile } from "./FeatureDetection";
@@ -85,6 +89,8 @@ export class GameController {
   private projectiles: ProjectileRenderer | null = null;
   private milestones = new MilestoneTracker();
   private stats: ColorStats | null = null;
+  private upgrades = new UpgradeState();
+  private generator: CannonLoadGenerator | null = null;
 
   private rng = new XorShift32(0x12345678);
   private fractionalCarry: number[] = [];
@@ -143,6 +149,30 @@ export class GameController {
     return this.stats;
   }
 
+  getUpgrades(): UpgradeState {
+    return this.upgrades;
+  }
+
+  /**
+   * Buys one level and pushes it straight into the running game, including the
+   * cannons already on the rail.
+   */
+  buyUpgrade(id: UpgradeId): boolean {
+    if (!this.upgrades.buy(id)) return false;
+    this.applyUpgrades();
+    this.saveDirty = true;
+    return true;
+  }
+
+  private applyUpgrades(): void {
+    const effects = this.upgrades.effects();
+    this.combat?.setMaxActiveCannons(effects.maxActiveCannons);
+    this.combat?.setBlastRadius(effects.blastRadius);
+    this.combat?.tuneCannons(effects.fireIntervalMs, effects.moveSpeed);
+    this.generator?.setAmmoPerLoad(effects.ammoPerLoad);
+    this.queue?.setSize(effects.visibleLoads);
+  }
+
   private setPhase(phase: GamePhase): void {
     this.phase = phase;
     this.events.onPhase?.(phase);
@@ -179,6 +209,8 @@ export class GameController {
       this.rng = new XorShift32(hashString(file.name + file.size) || 0x12345678);
       this.fractionalCarry = new Array(palette.length).fill(0);
 
+      // A new image starts from the base values: upgrades are per level.
+      this.upgrades = new UpgradeState();
       this.prepared = PixelWorld.create(palette, colorId);
       this.events.onLevelPrepared?.(palette, this.prepared.colorId, this.prepared.width);
     } catch (error) {
@@ -208,9 +240,11 @@ export class GameController {
     this.stats = new ColorStats(world);
 
     this.reserve = new ColorAmmoReserve(world);
-    this.queue = new CannonQueue(new CannonLoadGenerator(this.reserve, this.rng), this.reserve);
+    this.generator = new CannonLoadGenerator(this.reserve, this.rng);
+    this.queue = new CannonQueue(this.generator, this.reserve);
 
     this.combat = new CombatSimulator(world, this.queue, this.reserve, {}, this.lod);
+    this.applyUpgrades();
 
     if (saved) {
       this.combat.restoreCannons(saved.cannons);
@@ -240,7 +274,9 @@ export class GameController {
       () => this.board?.restore(world.palette),
     );
 
+    // The image funds its own destruction: one destroyed pixel is one fragment.
     world.onDestroy(() => {
+      this.upgrades.earn(1);
       this.saveDirty = true;
     });
 
@@ -266,6 +302,7 @@ export class GameController {
     this.combat = null;
     this.queue = null;
     this.reserve = null;
+    this.generator = null;
   }
 
   /** Frames the board into the play area the layout provides. */
@@ -362,6 +399,7 @@ export class GameController {
       flags: world.flags.buffer as ArrayBuffer,
       loads: [...queue.visible],
       cannons: combat.activeCannons.map((cannon) => cannon.serialize()),
+      upgrades: this.upgrades.serialize(),
       rngAlgorithm: RNG_ALGORITHM,
       rngState: this.rng.snapshot(),
       fractionalCarryByColor: this.fractionalCarry,
@@ -398,6 +436,7 @@ export class GameController {
     this.lastSimulatedAtEpochMs = saved.lastSimulatedAtEpochMs;
     this.rng = new XorShift32(saved.rngState);
     this.fractionalCarry = saved.fractionalCarryByColor.slice();
+    this.upgrades = UpgradeState.restore(saved.upgrades);
 
     const world = new PixelWorld(
       {
@@ -434,7 +473,10 @@ export class GameController {
           loads: saved.loads,
           cannons: saved.cannons.map(ActiveCannon.restore),
         });
-        this.events.onOfflineReport?.(report.report);
+        // The catch-up always runs; only a real absence is worth announcing.
+        if (report.report.elapsedMs >= OFFLINE_REPORT_THRESHOLD_MS) {
+          this.events.onOfflineReport?.(report.report);
+        }
         this.saveDirty = true;
         await this.save();
         return true;

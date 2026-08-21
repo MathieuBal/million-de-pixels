@@ -21,8 +21,14 @@ export class CannonQueue {
   constructor(
     private readonly generator: CannonLoadGenerator,
     private readonly reserve: ColorAmmoReserve,
-    private readonly size = VISIBLE_LOADS,
+    private size = VISIBLE_LOADS,
   ) {}
+
+  /** Widening the queue fills the new slots at once. */
+  setSize(size: number): void {
+    this.size = Math.max(1, Math.round(size));
+    this.refill();
+  }
 
   get visible(): readonly CannonLoad[] {
     return this.loads;

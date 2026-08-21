@@ -85,7 +85,7 @@ async function boot(): Promise<void> {
   document.getElementById("zoom-in")!.addEventListener("click", () => controls.zoomIn());
   document.getElementById("zoom-out")!.addEventListener("click", () => controls.zoomOut());
   document.getElementById("zoom-fit")!.addEventListener("click", () => controls.fit());
-  document.getElementById("pause")!.addEventListener("click", () => gameScreen.toggleDebug());
+  document.getElementById("pause")!.addEventListener("click", () => gameScreen.upgrades.open());
 
   /**
    * The canvas lives inside the play area, so the camera's rectangle is simply
