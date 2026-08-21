@@ -34,8 +34,13 @@ export interface LoadWeight {
 export function loadWeights(
   reserve: ColorAmmoReserve,
   alpha = LOAD_WEIGHT_ALPHA,
+  only: number | null = null,
 ): LoadWeight[] {
-  const available = reserve.availableColors();
+  const all = reserve.availableColors();
+  // The Trieuse unlock lets a player commit the queue to one colour. It narrows
+  // what is offered rather than inventing rounds: a colour with nothing left to
+  // promise falls back to the normal draw instead of emptying the queue.
+  const available = only !== null && all.includes(only) ? [only] : all;
   if (available.length === 0) return [];
 
   let total = 0;
@@ -71,14 +76,25 @@ export class CannonLoadGenerator {
     private ammoPerLoad = DEFAULT_LOAD_AMMO,
   ) {}
 
+  private preferred: number | null = null;
+
   /** Loads already in the queue keep the stock they were drawn with. */
   setAmmoPerLoad(ammo: number): void {
     this.ammoPerLoad = Math.max(1, Math.round(ammo));
   }
 
+  /** Restricts what the queue draws to one colour. Null is the normal draw. */
+  setPreferredColor(colorId: number | null): void {
+    this.preferred = colorId;
+  }
+
+  get preferredColor(): number | null {
+    return this.preferred;
+  }
+
   /** Returns null when no colour can supply a single round any more. */
   next(): CannonLoad | null {
-    const weights = loadWeights(this.reserve);
+    const weights = loadWeights(this.reserve, LOAD_WEIGHT_ALPHA, this.preferred);
     if (weights.length === 0) return null;
 
     const roll = this.rng.nextFloat();

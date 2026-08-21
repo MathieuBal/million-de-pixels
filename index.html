@@ -162,6 +162,13 @@
 
         <div id="slots" class="slots"></div>
 
+        <div id="queue-tools" class="queue-tools" hidden>
+          <div id="color-filter" class="color-filter"></div>
+          <button id="auto-launch" class="tool-toggle" type="button" hidden>
+            <span class="glyph">⟳</span><span class="label">Auto</span>
+          </button>
+        </div>
+
         <div id="cards" class="cards"></div>
 
         <div id="boosters" class="boosters"></div>
@@ -171,8 +178,12 @@
           <div class="panel upgrade-body">
             <div class="upgrade-head">
               <span class="title">Améliorations</span>
-              <span class="balance"><i></i><span id="upgrade-balance">0</span></span>
+              <span class="balance">
+                <i></i><span id="upgrade-balance">0</span>
+                <b class="shards">◆ <span id="upgrade-shards">0</span></b>
+              </span>
             </div>
+            <div id="upgrade-tabs" class="upgrade-tabs"></div>
             <div id="upgrade-rows" class="upgrade-rows"></div>
             <button id="upgrade-close" class="cta" type="button">Reprendre</button>
           </div>
@@ -185,12 +196,13 @@
               <span class="title" id="run-menu-title">Partie</span>
               <span class="balance"><i></i><span id="run-menu-pass">Passage 1</span></span>
             </div>
+            <div class="reward" id="run-reward" hidden></div>
             <p class="run-menu-note" id="run-menu-note"></p>
             <div class="run-menu-actions">
               <button id="run-next" class="cta" type="button" hidden>Passage suivant</button>
               <button id="run-restart" class="ghost-button" type="button">
                 <span class="label">Recommencer l'image</span>
-                <span class="hint">le plateau redevient entier — améliorations et fragments repartent de zéro</span>
+                <span class="hint">le plateau redevient entier — tu ne gardes que ce que le permanent te donne</span>
               </button>
               <button id="run-change" class="ghost-button" type="button">
                 <span class="label">Changer d'image</span>

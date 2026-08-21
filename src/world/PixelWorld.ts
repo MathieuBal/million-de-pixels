@@ -118,6 +118,12 @@ export class PixelWorld {
     return PixelWorld.create(this.palette, this.baseColorId.slice());
   }
 
+  /** A living cell of some colour: not a hole, not a transparent margin. */
+  isSolid(pixelIndex: number): boolean {
+    const cell = this.colorId[pixelIndex];
+    return cell !== DEAD && cell !== VOID;
+  }
+
   onDestroy(listener: DestructionListener | null): void {
     this.listener = listener;
   }

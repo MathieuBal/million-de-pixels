@@ -44,7 +44,15 @@
 
 html, body {
   margin: 0;
+  /*
+   * `100%` resolves against the *layout* viewport, which on a phone includes
+   * the strip behind a retracting URL bar. The bottom of the page then sits
+   * under the browser chrome — present, laid out, and impossible to touch.
+   * `dvh` tracks what is actually visible; the percentage stays as the fallback
+   * for anything that does not know the unit.
+   */
   height: 100%;
+  height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
@@ -57,6 +65,7 @@ html, body {
   position: relative;
   width: min(100vw, 430px);
   height: 100%;
+  height: 100dvh;
   margin: 0 auto;
   background: var(--surface);
   overflow: hidden;
@@ -292,12 +301,31 @@ html, body {
 
 .screen-game { padding: 0; }
 
+/*
+ * Nothing below the board may shrink.
+ *
+ * The reference layout is 430 x 932, and every real phone is shorter than that
+ * — a URL bar alone costs a hundred pixels. In a plain flex column every child
+ * shrinks by default, so the offers were the ones that gave: `#cards` collapsed
+ * to ten pixels while its tiles kept their seventy-three and spilled out under
+ * the boosters, or off the screen entirely. The tiles were still in the DOM and
+ * still had a hit box, which is why nothing looked broken and nothing could be
+ * tapped.
+ *
+ * The board is the only thing that gives, because it is the only thing that
+ * reads fine at any size.
+ */
+.screen-game > * { flex: 0 0 auto; }
+.board-frame { flex: 0 1 auto; min-height: 0; }
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 30px var(--screen-pad) 8px;
+  /* viewport-fit=cover means the page runs under the notch and the home
+     indicator, so the insets have to be paid back by hand. */
+  padding: calc(30px + env(safe-area-inset-top, 0px)) var(--screen-pad) 8px;
 }
 
 .coin {
@@ -353,6 +381,9 @@ html, body {
 .play-area {
   position: relative;
   aspect-ratio: 1;
+  /* Square is the preference, not a promise: on a short screen the board is a
+     rectangle and the camera frames it exactly the same way. */
+  max-height: 100%;
   border-radius: 11px;
   background: var(--well);
   /* Clips the board: at any zoom above the fit, the grid runs past this box. */
@@ -415,11 +446,13 @@ html, body {
 .cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  align-content: start;
   gap: var(--gutter);
   padding: 10px var(--screen-pad) 0;
   /* The étal upgrade runs to forty-eight tiles, so the row that held eight has
-     to become a scrolling area rather than push the boosters off screen. */
-  max-height: 172px;
+     to become a scrolling area rather than push the boosters off screen. Two
+     rows are always visible; the rest scrolls. */
+  height: 172px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -462,7 +495,7 @@ html, body {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding: 14px var(--screen-pad) 22px;
+  padding: 14px var(--screen-pad) calc(22px + env(safe-area-inset-bottom, 0px));
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
@@ -523,8 +556,8 @@ html, body {
 }
 .zoom[hidden] { display: none; }
 .zoom button {
-  width: 30px;
-  height: 26px;
+  width: 38px;
+  height: 34px;
   border-radius: 7px;
   background: var(--raise);
   border: 1px solid var(--line);
@@ -603,9 +636,96 @@ html, body {
   gap: 12px;
   padding: 18px 20px;
 }
+.reward { display: flex; flex-direction: column; gap: 2px; }
+.reward[hidden] { display: none; }
+.reward-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 2px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.reward-row b { font-family: var(--mono); font-size: 13px; color: var(--text-2); }
+.reward-total {
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line-2);
+  color: var(--text);
+  font-weight: 600;
+}
+.reward-total b { color: var(--accent); font-size: 16px; }
+
 .run-menu-note { font-size: 13px; color: var(--muted); line-height: 1.45; }
 .run-menu-note:empty { display: none; }
 .run-menu-actions { display: flex; flex-direction: column; gap: 8px; }
+
+/* Comfort row: colour filter and auto-launch, both earned with éclats. */
+.queue-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px var(--screen-pad) 0;
+}
+.queue-tools[hidden] { display: none; }
+.color-filter { display: flex; gap: 5px; flex: 1; overflow-x: auto; padding-bottom: 2px; }
+.filter-chip {
+  flex: 0 0 auto;
+  min-width: 26px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 7px;
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.filter-chip[data-on="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tool-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 7px;
+  border: 1px solid var(--line-2);
+  background: var(--raise);
+  color: var(--text-2);
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tool-toggle[hidden] { display: none; }
+.tool-toggle[data-on="true"] { border-color: var(--accent); color: var(--accent); }
+
+.upgrade-tabs { display: flex; gap: 6px; }
+.upgrade-tab {
+  flex: 1;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.upgrade-tab[data-active="true"] { border-color: var(--accent); color: var(--text); }
+.upgrade-family {
+  padding: 10px 2px 2px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-2);
+}
+.upgrade-head .balance .shards { margin-left: 10px; color: var(--accent); font-weight: 700; }
+/* The panel now carries a dozen axes across two tabs: it has to scroll. */
+.upgrade-rows { max-height: 46vh; overflow-y: auto; overscroll-behavior: contain; }
 
 /* --------------------------------------------------------------- 03 offline */
 
@@ -718,3 +838,140 @@ html, body {
 .upgrade-row .price:hover:not(:disabled) { filter: brightness(1.08); }
 .upgrade-row .price:active:not(:disabled) { transform: scale(0.98); }
 .upgrade-row .price:disabled { background: #202028; color: var(--muted-2); cursor: not-allowed; }
+
+/* --------------------------------------------------------- 05 écran court */
+
+/*
+ * Every real phone is shorter than the 430 x 932 reference — a URL bar alone
+ * costs a hundred pixels, and a 360 x 600 handset is a third short. Something
+ * has to give, and it must not be the board: a plateau squeezed to a hundred
+ * pixels is not a game, it is a progress bar with extra steps.
+ *
+ * So the stack below it gets compact instead. The colour blocks are the first
+ * to go — the same numbers are one tap away in the debug panel and the bar
+ * above already says how far the run is — then the paddings, the tile height
+ * and the booster row.
+ */
+@media (max-height: 820px) {
+  .topbar {
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    padding-bottom: 4px;
+  }
+
+  /*
+   * The board takes what the fixed panels leave, with a floor under it: below
+   * that it stops being worth looking at. It also stops being square — keeping
+   * `aspect-ratio` here shrinks the *width* to match the clamped height and
+   * leaves a band of empty frame beside it, and the camera frames a rectangle
+   * exactly as well as a square.
+   */
+  .board-frame { flex: 1 1 auto; min-height: 190px; padding: 9px; display: flex; }
+  .play-area { aspect-ratio: auto; flex: 1; min-height: 0; max-height: none; }
+  .board-frame .rail { inset: 9px; }
+  .rail-tokens { inset: 9px; }
+
+  .progress { padding-top: 12px; gap: 6px; }
+  .color-stats { display: none; }
+
+  .slots { padding-top: 10px; }
+  .slots > div { height: 40px; }
+
+  .cards { height: 132px; padding-top: 8px; }
+  .cards button { padding: 5px 0 4px; }
+  .cards .tile { width: 34px; height: 34px; font-size: 13px; }
+
+  .boosters {
+    padding: 9px var(--screen-pad) calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .booster { padding: 7px 0; }
+
+  .zoom { right: 12px; bottom: 12px; padding: 3px; gap: 3px; }
+  .zoom button { width: 36px; height: 32px; }
+}
+
+/* --------------------------------------------- 04 côte à côte : bureau et paysage */
+
+/*
+ * The reference layout is a 430 x 932 phone, and it stays the layout: on a
+ * desktop the same panels move to a column beside the board instead of being
+ * restacked into something else. The board takes everything that is left, which
+ * is the whole point of playing on a big screen — a million cells finally get
+ * the pixels to be seen with.
+ *
+ * The camera does not care about the shape: `Viewport.setArea` is handed
+ * whatever rectangle the play area ends up with, and the layout pushes the new
+ * size in on resize rather than the renderer polling for it.
+ */
+@media (min-width: 1000px) and (min-height: 560px),
+       (orientation: landscape) and (max-height: 560px) and (min-width: 560px) {
+  #app { width: 100vw; }
+
+  .screen-game {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(360px, 30vw, 460px);
+    grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+    column-gap: 4px;
+    padding-bottom: 18px;
+  }
+
+  .topbar { grid-column: 1 / -1; grid-row: 1; padding-top: 18px; }
+  .board-frame {
+    grid-column: 1;
+    grid-row: 2 / -1;
+    display: flex;
+    min-height: 0;
+    margin: 0 8px 0 var(--screen-pad);
+  }
+  /* Square is a phone constraint: here the board fills the column it is given. */
+  .play-area { aspect-ratio: auto; flex: 1; min-height: 0; }
+
+  .progress { grid-column: 2; grid-row: 2; }
+  .slots { grid-column: 2; grid-row: 3; }
+  .queue-tools { grid-column: 2; grid-row: 4; }
+  /* The row takes the leftover height, the tiles keep theirs: without this
+     eight offers stretch into columns the height of the board. */
+  .cards {
+    grid-column: 2;
+    grid-row: 5;
+    max-height: none;
+    min-height: 0;
+    align-content: start;
+  }
+  .boosters { grid-column: 2; grid-row: 6; }
+
+  /* Sheets stay sheet-sized instead of stretching across the desk. */
+  .upgrade-panel { align-items: center; justify-content: center; }
+  .upgrade-body,
+  .run-menu-body { width: min(520px, 90vw); margin: 0; }
+  .upgrade-rows { max-height: 58vh; }
+
+  .screen-import { align-items: center; }
+  .screen-import > * { width: min(560px, 100%); }
+
+  .zoom { bottom: 16px; right: 16px; }
+}
+
+/*
+ * A phone held sideways is a wide, very short viewport: the portrait stack
+ * cannot fit and does not degrade — the offers and the boosters simply end up
+ * below the screen, laid out and untouchable. It gets the same side-by-side
+ * layout as a desktop, tightened: a narrower panel column, and offers that take
+ * what is left and scroll rather than a fixed two rows.
+ */
+@media (orientation: landscape) and (max-height: 560px) and (min-width: 560px) {
+  .screen-game {
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 44vw, 360px);
+    /* One row of offers is the floor: a row that can reach zero lets the tiles
+       render past it and land on the boosters. */
+    grid-template-rows: auto auto auto auto minmax(76px, 1fr) auto;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .topbar { padding-top: calc(8px + env(safe-area-inset-top, 0px)); padding-bottom: 2px; }
+  .board-frame { margin: 0 6px 0 12px; min-height: 0; }
+  .progress { padding-top: 8px; }
+  .slots { padding-top: 8px; }
+  /* Clamped to its row and scrolling inside it, never spilling past it. */
+  .cards { height: 100%; min-height: 0; overflow-y: auto; padding-top: 6px; }
+  .boosters { padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px)); }
+  .booster { padding: 5px 0; }
+}

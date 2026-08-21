@@ -180,12 +180,22 @@ L'image finance sa propre destruction : un pixel détruit vaut un fragment. Quat
 axes, achetés dans un panneau et appliqués immédiatement — y compris aux canons
 déjà sur le rail, sans quoi un achat semblerait sans effet.
 
-| Axe | Effet | Base → max | Paliers | Coût total |
-|---|---|---|---:|---:|
-| Vitesse | voies examinées par seconde | 260 → 2 426 | 150 × +1,5 % | 594 k |
-| Rail | canons simultanés | 5 → 55 | 50 × +1 | 369 k |
-| Chargeur | munitions par case | 40 → 1 240 | 100 × +12 | 765 k |
-| Étal | cases proposées | 8 → 48 | 40 × +1 | 74 k |
+Douze axes, en quatre familles.
+
+| Famille | Axe | Effet | Base → max | Paliers |
+|---|---|---|---|---:|
+| Rail | Vitesse | voies examinées par seconde | 260 → 2 426 | 150 |
+| Rail | Rail | canons simultanés | 5 → 55 | 50 |
+| Cases | Chargeur | munitions par case | 40 → 1 240 | 100 |
+| Cases | Étal | cases proposées | 8 → 48 | 40 |
+| Économie | Alliage | fragments par pixel | ×1 → ×7 | 120 |
+| Économie | Veille | production hors-ligne | ×1 → ×7 | 80 |
+| Tirs | Perce | chance d'atteindre sa couleur derrière un obstacle | 0 → 75 % | 60 |
+| Tirs | Pointe | cellules étrangères traversées | 0 → 30 | 30 |
+| Tirs | Éclat | chance d'emporter les voisins | 0 → 60 % | 60 |
+| Tirs | Souffle | rayon de l'explosion | 0 → 20 | 20 |
+| Tirs | Foudre | chance qu'un arc saute sur un voisin | 0 → 60 % | 60 |
+| Tirs | Chaîne | sauts successifs de l'arc | 0 → 40 | 40 |
 
 **Pistes longues, petits pas.** Chaque axe court sur dix fois plus de paliers
 qu'à l'origine, chacun valant environ un dixième, avec un prix qui croît à la
@@ -197,6 +207,81 @@ pixels — soit environ deux passages.
 
 **Vitesse est l'axe de production.** Depuis que le rail est l'horloge, voies par
 seconde *est* le débit.
+
+**Les tirs spéciaux vont par paire** : une chance et une puissance. La chance dit
+à quelle fréquence le passage fait autre chose, la puissance dit jusqu'où il va.
+Acheter la puissance sans la chance ne sert à rien — c'est le choix qui est
+proposé.
+
+**Chaque bloc qu'un effet retire coûte une munition.** Ce n'est pas une
+restriction ajoutée après coup : le grand livre dit `queued + active <= alive`,
+donc une couleur ne peut jamais se voir promettre plus de munitions qu'elle n'a
+de pixels. Un effet qui détruirait gratuitement placerait durablement le grand
+livre au-dessus du plateau, et le jeu distribuerait des canons pour des couleurs
+qui n'existent plus. Les effets rendent un **passage** plus productif, jamais une
+munition.
+
+**Perce se déclenche sur une voie bloquée**, pas après une bouchée réussie :
+traverser ce qui est devant est toute sa raison d'être, et le tirer seulement
+après un tir réussi en aurait fait la seule spécialisation qui n'aide jamais
+quand on en a besoin. Il regarde au-delà d'un nombre borné de cellules
+étrangères et prend la première cellule de sa couleur derrière — **sans jamais
+détruire ce qu'il a traversé**.
+
+## Ce qui survit à une image
+
+Les améliorations sont volontairement liées à une toile : une nouvelle image doit
+repartir des valeurs de base, sinon la première passe de chaque image après la
+première serait finie avant d'avoir commencé. Restait à donner un intérêt à
+terminer une toile — ce sont les **éclats**.
+
+| Permanent | Effet |
+|---|---|
+| Héritage | fragments offerts au début de chaque image |
+| Élan | fragments par pixel, sur toutes les images |
+| Socle | canons simultanés dès le départ |
+| Somnambule | production hors-ligne, sur toutes les images |
+| Fondation | vitesse de rail de départ |
+| Atelier | munitions par case de départ |
+| Prospecteur | éclats gagnés en terminant une toile |
+| **Mémoire** | **niveaux d'améliorations repris sur la toile suivante** |
+| Trieuse | filtrer et trier les cases par couleur |
+| Automate | lancer les cases toutes seules dès qu'un slot se libère |
+
+**Mémoire est la boucle longue.** Les axes sont liés à une image par nécessité,
+et Mémoire est l'exception achetée à cette règle : un pourcentage des niveaux de
+la dernière toile *terminée* est repris sur la suivante, jusqu'à la moitié. Seule
+une vraie fin de niveau met cet instantané à jour — un redémarrage ne le fait
+jamais, sans quoi il suffirait de recommencer pour mettre un build en banque.
+
+### Ce que vaut une toile
+
+Quatre choses rendent une image difficile, et chacune est une ligne lisible sur
+le panneau de fin plutôt qu'un nombre à croire sur parole :
+
+| Ligne | Ce qu'elle mesure |
+|---|---|
+| Pixels détruits | `playablePixels / 50 000` — une photo dense vaut plus qu'un logo transparent |
+| Palette | `1 + (couleurs − 6) × 0,10` — chaque couleur est une file, un canon et un goulot de plus |
+| Couleurs rares | `1 + rares × 0,15` — celles qui se cachent derrière la façade d'une autre |
+| Passage | `1 + (passage − 1) × 0,25` — revenir sur une image connue rapporte moins, jamais rien |
+
+La ligne « couleurs rares » est ce qui donne enfin une valeur mécanique à la
+préservation des micro-couleurs : une couleur descendue à une fraction de pour
+cent est exactement celle qui bloque une partie derrière une autre, et c'est
+précisément ce que la détection de palette a été construite pour garder.
+
+Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs rares :
+`12 × 1,20 × 1,75 = 25 éclats`.
+
+Ils sont rangés dans le magasin de réglages, pas dans une sauvegarde de niveau,
+parce que c'est exactement ce qu'ils sont : de l'état de profil.
+
+**Trieuse et Automate se gagnent** au lieu d'être donnés. Ils ne veulent dire
+quelque chose que pour quelqu'un qui a déjà fini une toile et sait ce qui est
+pénible dans la suivante : chercher la couleur goulot parmi huit offres au
+hasard, et cliquer la même case quelques centaines de fois. Tant qu'ils ne sont
+pas achetés, la rangée n'existe pas et une première passe garde sa forme.
 
 `blastRadius` reste une option de `CombatSimulator` par défaut à zéro : c'est le
 point d'accroche du futur système d'effets, pas un axe achetable.
@@ -233,6 +318,51 @@ sur une vraie fin de niveau.
 `PixelWorld.restart()` reconstruit le niveau depuis `baseColorId`, porté depuis
 le premier commit exactement pour ça : l'image d'origine ne quitte jamais la
 mémoire, donc recommencer coûte une copie et aucun ré-import.
+
+## Écrans
+
+La mise en page de référence est un téléphone de 430 × 932, et elle le reste : sur
+un bureau, les mêmes panneaux passent dans une colonne à côté du plateau au lieu
+d'être réempilés en autre chose.
+
+**Aucun téléphone réel ne fait 932 de haut** — une barre d'URL coûte à elle seule
+une centaine de pixels, et un appareil de 360 × 600 en perd un tiers. Dans une
+colonne flex ordinaire, tout enfant se rétracte par défaut, et c'étaient les
+cases qui cédaient : `#cards` s'écrasait à dix pixels pendant que ses tuiles
+gardaient leurs soixante-treize et débordaient sous les boosters, voire hors de
+l'écran. Elles restaient dans le DOM avec une boîte de clic, donc rien n'avait
+l'air cassé et rien n'était cliquable. Rien au-dessus du plateau ne se rétracte
+plus, et sous 820 px de haut la pile se compacte — blocs de couleurs masqués,
+marges et tuiles resserrées — au lieu de voler sa place au plateau, qui garde un
+plancher de 190 px et cesse d'être carré. 
+
+**Un téléphone tenu de côté est un écran large et très court** : la pile
+portrait n'y tient pas et ne se dégrade pas — les cases et les boosters
+finissaient simplement sous le bord de l'écran, disposés et intouchables. Le
+paysage reçoit donc la même mise en page côte à côte que le bureau, resserrée.
+
+**`100%` se résout contre le viewport de *mise en page***, qui inclut la bande
+derrière une barre d'URL rétractable : le bas de la page se retrouve sous la
+barre du navigateur. La hauteur est en `100dvh`, qui suit ce qui est réellement
+visible, avec le pourcentage en repli. Et comme la page est servie en
+`viewport-fit=cover`, les encoches et l'indicateur d'accueil sont remboursés à
+la main avec `env(safe-area-inset-*)`.
+
+Le smoke conduit un navigateur tactile à quatre tailles — deux portraits courts,
+deux paysages — et vérifie, **pour chaque contrôle à la fois**, ce qui compte :
+en son centre, est-ce lui que `elementFromPoint` renvoie, ce point est-il à
+l'écran, et sa cible fait-elle au moins 30 px. Un contrôle sorti d'une zone
+défilante ne compte pas : un geste le ramène. Le plateau prend tout le reste, ce qui est
+l'intérêt d'un grand écran — un million de cellules obtient enfin les pixels pour
+être regardé. La caméra se moque de la forme : `Viewport.setArea` reçoit le
+rectangle que la zone de jeu occupe réellement, et la mise en page pousse la
+nouvelle taille au redimensionnement plutôt que de laisser le renderer la
+sonder.
+
+`npm run shot -- out.png 1440 900` conduit un vrai navigateur jusqu'à un état
+jouable et écrit un PNG : la mise en page est la seule partie du projet qu'aucune
+assertion ne couvre, et une grille qui s'applique techniquement peut quand même
+mettre huit offres en colonnes hautes comme le plateau.
 
 ## Mesures
 

@@ -156,7 +156,15 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
-  check("le panneau liste les quatre axes", (await page.locator(".upgrade-row").count()) === 4);
+  check("le panneau liste les douze axes", (await page.locator(".upgrade-row").count()) === 12);
+  check("les axes sont groupes par famille", (await page.locator(".upgrade-family").count()) === 4);
+
+  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  check(
+    "l'onglet permanent liste les eclats",
+    (await page.locator(".upgrade-row").count()) === 10,
+  );
+  await page.locator('#upgrade-tabs button[data-tab="level"]').click();
 
   const balanceBefore = digits(await page.locator("#upgrade-balance").innerText());
   check("les pixels detruits financent les achats", balanceBefore > 0, `${balanceBefore} fragments`);
@@ -281,10 +289,178 @@ try {
 
   check("aucune erreur console", errors.length === 0, errors.join(" | "));
 
+  await checkClearReward(browser, fixture);
+  await checkTouchLayouts(browser, fixture);
+
   await browser.close();
 } finally {
   server.kill();
   fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+/**
+ * What happens when a toile is actually finished.
+ *
+ * The long game rests on this moment and nothing else reaches it: a full image
+ * takes hours of real play, so the board is emptied through the controller and
+ * the completion panel is read as the player would.
+ */
+async function checkClearReward(browser, fixture) {
+  console.log("\n— fin de toile —");
+
+  const ctx = await browser.newContext({ viewport: { width: 430, height: 932 } });
+  const page = await ctx.newPage();
+
+  await page.goto(URL, { waitUntil: "networkidle" });
+  await page.setInputFiles("#file-input", fixture);
+  await page.waitForSelector("#start-run:not([disabled])", { timeout: 60000 });
+  await page.locator("#start-run").click();
+  await page.waitForSelector("#screen-game:not([hidden])", { timeout: 60000 });
+  await page.waitForTimeout(1200);
+
+  // Empty the board the only way a test can: through the world itself.
+  const palette = await page.evaluate(() => {
+    const world = window.__game.getWorld();
+    return { size: world.paletteSize, playable: world.playablePixels };
+  });
+  await page.evaluate(() => {
+    const world = window.__game.getWorld();
+    // The world only needs an integer source; anything deterministic will do.
+    const rng = { nextInt: (n) => 0, nextFloat: () => 0, nextUint32: () => 1 };
+    for (let c = 0; c < world.paletteSize; c++) {
+      world.destroyRandomOfColor(c, world.aliveByColor(c), rng);
+    }
+  });
+
+  await page.waitForSelector("#run-menu:not([hidden])", { timeout: 15000 });
+  check("le panneau de fin s'ouvre tout seul", true);
+  check(
+    "le passage suivant est proposé",
+    await page.locator("#run-next").isVisible(),
+  );
+
+  const rows = await page.locator("#run-reward .reward-row").allInnerTexts();
+  check("la récompense est détaillée", rows.length >= 5, `${rows.length} lignes`);
+  const total = digits(rows[rows.length - 1] ?? "");
+  check("des éclats sont gagnés", total > 0, `${total} éclats`);
+  console.log(`        ${palette.size} couleurs · ${palette.playable} px jouables`);
+  for (const row of rows) console.log(`        ${row.replace(/\n/g, " ")}`);
+
+  // And they are spendable, in the currency that survives the image.
+  await page.locator("#run-menu-close").click();
+  await page.locator("#pause").click();
+  await page.waitForSelector("#upgrade-panel:not([hidden])");
+  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  const shards = digits(await page.locator("#upgrade-shards").innerText());
+  check("les éclats sont au crédit du profil", shards === total, `${shards} au solde`);
+
+  await ctx.close();
+}
+
+/**
+ * Is every control actually reachable by a finger, at the sizes people hold?
+ *
+ * The reference layout is 430 x 932 and no real phone is that tall — a URL bar
+ * costs a hundred pixels — while a phone held sideways is a different shape
+ * entirely. Both broke silently: controls stayed in the DOM with a hit box,
+ * laid out under the boosters or past the bottom of the screen. Nothing an
+ * assertion on the DOM would have caught, and nothing a screenshot of the
+ * reference size would have shown.
+ *
+ * So the check is the one that matters, for every control at once: at its own
+ * centre, is it what `elementFromPoint` returns, and is that point on screen.
+ * A control scrolled out of a scrolling container is fine — a gesture brings it
+ * back; only what no gesture can reach counts as a failure.
+ */
+async function checkTouchLayouts(browser, fixture) {
+  console.log("\n— portees tactiles —");
+
+  const sizes = [
+    [393, 664], // portrait, browser chrome taken out
+    [360, 600], // small Android
+    [844, 390], // held sideways
+    [667, 375],
+  ];
+
+  for (const [width, height] of sizes) {
+    const ctx = await browser.newContext({
+      viewport: { width, height },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+    });
+    const page = await ctx.newPage();
+
+    await page.goto(URL, { waitUntil: "networkidle" });
+    await page.setInputFiles("#file-input", fixture);
+    await page.waitForSelector("#start-run:not([disabled])", { timeout: 60000 });
+    await page.locator("#start-run").click();
+    await page.waitForSelector("#screen-game:not([hidden])", { timeout: 60000 });
+    await page.waitForTimeout(1500);
+
+    const report = await page.evaluate((vh) => {
+      const targets = Array.from(
+        document.querySelectorAll("#screen-game button, #screen-game .filter-chip"),
+      ).filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && !el.closest("[hidden]");
+      });
+
+      const clippedByScroller = (el, r) => {
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const st = getComputedStyle(p);
+          if (!/(auto|scroll)/.test(st.overflowY + st.overflowX)) continue;
+          if (p.scrollHeight <= p.clientHeight + 1 && p.scrollWidth <= p.clientWidth + 1) continue;
+          const pr = p.getBoundingClientRect();
+          if (r.bottom > pr.bottom + 1 || r.y < pr.y - 1) return true;
+        }
+        return false;
+      };
+
+      const bad = [];
+      for (const el of targets) {
+        const r = el.getBoundingClientRect();
+        const name = `${el.id || el.className || el.tagName}`.trim().slice(0, 30);
+        if (clippedByScroller(el, r)) continue;
+
+        if (r.y < 0 || r.bottom > vh + 0.5 || r.x < 0 || r.right > window.innerWidth + 0.5) {
+          bad.push(`${name} hors ecran`);
+          continue;
+        }
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        if (!hit) bad.push(`${name} : rien sous le point`);
+        else if (hit !== el && !el.contains(hit)) {
+          bad.push(`${name} couvert par ${`${hit.id || hit.className}`.trim().slice(0, 24)}`);
+        }
+        if (r.height < 30 || r.width < 30) {
+          bad.push(`${name} : cible ${r.width.toFixed(0)}x${r.height.toFixed(0)}`);
+        }
+      }
+
+      const board = document.querySelector("#play-area").getBoundingClientRect();
+      const boosters = document.querySelector("#boosters").getBoundingClientRect();
+      return {
+        targets: targets.length,
+        bad,
+        boardHeight: board.height,
+        overflows: boosters.bottom > vh + 1,
+      };
+    }, height);
+
+    check(
+      `${width}x${height} : les ${report.targets} controles sont atteignables`,
+      report.bad.length === 0,
+      report.bad.join(" | "),
+    );
+    check(`${width}x${height} : rien ne deborde sous l'ecran`, !report.overflows);
+    check(
+      `${width}x${height} : le plateau reste regardable`,
+      report.boardHeight >= 150,
+      `${report.boardHeight.toFixed(0)} px`,
+    );
+
+    await ctx.close();
+  }
 }
 
 console.log(failures.length === 0 ? "\nAll checks passed." : `\n${failures.length} check(s) failed.`);

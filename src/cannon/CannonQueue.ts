@@ -78,6 +78,28 @@ export class CannonQueue {
     return dropped;
   }
 
+  /**
+   * Drops the offers that do not match a colour filter, freeing their rounds.
+   *
+   * Without this, turning the filter on would leave up to eight loads of the
+   * wrong colours sitting in the way, and the player would have to spend them
+   * before seeing what they asked for.
+   */
+  dropUnwanted(colorId: number | null): CannonLoad[] {
+    if (colorId === null) return [];
+
+    const dropped: CannonLoad[] = [];
+    this.loads = this.loads.filter((load) => {
+      if (load.colorId === colorId) return true;
+      this.reserve.releaseFromQueue(load.colorId, load.ammo);
+      dropped.push(load);
+      return false;
+    });
+
+    this.refill();
+    return dropped;
+  }
+
   /** Restores a persisted queue, re-committing its rounds to the reserve. */
   restore(loads: CannonLoad[]): void {
     this.loads = loads.map((load) => ({
