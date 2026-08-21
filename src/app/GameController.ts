@@ -34,6 +34,7 @@ import { RNG_ALGORITHM, XorShift32 } from "../rng/XorShift32";
 import { UpgradeState, type UpgradeId } from "../progression/Upgrades";
 import {
   MetaProgression,
+  type ClearReward,
   type MetaUpgradeId,
   type PermanentBonus,
 } from "../progression/MetaProgression";
@@ -63,7 +64,7 @@ export interface GameEvents {
   onLevelReady?: (world: PixelWorld) => void;
   onMilestone?: (milestone: Milestone) => void;
   /** The board is empty. Fired once per pass, the moment the last pixel goes. */
-  onLevelCleared?: (pass: number, shards: number) => void;
+  onLevelCleared?: (pass: number, reward: ClearReward) => void;
   /** The level took over and is finishing itself. Fired once per pass. */
   onFinale?: () => void;
   onOfflineReport?: (report: OfflineReport) => void;
@@ -294,8 +295,10 @@ export class GameController {
       this.fractionalCarry = new Array(palette.length).fill(0);
 
       // A new image starts from the base values: upgrades are per level. What
-      // it does inherit is Héritage — the head start the profile paid for.
-      this.upgrades = new UpgradeState({}, this.meta.bonus().startingFragments);
+      // it inherits is what the profile paid for — Héritage's head start, and
+      // the slice of the last cleared toile's build that Mémoire carries over.
+      const bonus = this.meta.bonus();
+      this.upgrades = new UpgradeState({ ...bonus.carriedLevels }, bonus.startingFragments);
       this.prepared = PixelWorld.create(palette, colorId);
       this.events.onLevelPrepared?.(palette, this.prepared.colorId, this.prepared.width);
     } catch (error) {
@@ -345,17 +348,21 @@ export class GameController {
   }
 
   /**
-   * Puts the image back the way it was imported, and the player back at zero.
+   * Puts the image back the way it was imported, and the player back to the
+   * start of a toile.
    *
-   * Upgrades and fragments go with it. That is the point rather than a
-   * punishment: keeping them would make restarting a way to farm fragments off
-   * the same pixels over and over, since a destroyed pixel is a fragment and
-   * the board would hand out the same million again.
+   * What was bought on *this* image goes with it — keeping it would make
+   * restarting a way to farm fragments off the same pixels over and over, since
+   * a destroyed pixel is a fragment and the board would hand out the same
+   * million again. What the profile paid for stays: Héritage's head start and
+   * the slice Mémoire carries, exactly as if this were a new image. A restart
+   * and a new toile are the same moment, so they start from the same place.
    */
   restartLevel(): boolean {
     if (!this.world) return false;
+    const bonus = this.meta.bonus();
     this.completions = 0;
-    this.upgrades = new UpgradeState({}, this.meta.bonus().startingFragments);
+    this.upgrades = new UpgradeState({ ...bonus.carriedLevels }, bonus.startingFragments);
     this.rebuildFromBaseImage();
     return true;
   }
@@ -545,11 +552,24 @@ export class GameController {
       this.clearedAnnounced = true;
       // Clearing a toile is the only thing that pays éclats, and it pays before
       // the panel opens so the reward is already banked when the player sees it.
-      const shards = this.meta.recordClear(this.world.playablePixels, this.pass);
+      // What it is worth depends on the image itself: its size, how many colours
+      // had to be juggled, and how many of them were rare enough to hide behind
+      // another one.
+      const reward = this.meta.recordClear(
+        {
+          playablePixels: this.world.playablePixels,
+          paletteSize: this.world.paletteSize,
+          awkwardColors: this.world.palette.filter(
+            (entry) => entry.rarity === "rare" || entry.rarity === "exotique",
+          ).length,
+          pass: this.pass,
+        },
+        this.upgrades.serialize().levels,
+      );
       this.saveDirty = true;
       void this.save();
       void this.saveMeta();
-      this.events.onLevelCleared?.(this.pass, shards);
+      this.events.onLevelCleared?.(this.pass, reward);
     }
 
     this.profiler.recordFrame(deltaMs, simMs);

@@ -241,14 +241,41 @@ terminer une toile — ce sont les **éclats**.
 | Élan | fragments par pixel, sur toutes les images |
 | Socle | canons simultanés dès le départ |
 | Somnambule | production hors-ligne, sur toutes les images |
+| Fondation | vitesse de rail de départ |
+| Atelier | munitions par case de départ |
+| Prospecteur | éclats gagnés en terminant une toile |
+| **Mémoire** | **niveaux d'améliorations repris sur la toile suivante** |
 | Trieuse | filtrer et trier les cases par couleur |
 | Automate | lancer les cases toutes seules dès qu'un slot se libère |
 
-Les éclats sont proportionnels à l'image (`playablePixels / 50 000`) et
-augmentent avec le numéro de passage, donc une image dense vaut plus qu'un logo
-transparent et une deuxième passe rapporte encore, moins mais pas rien. Ils sont
-rangés dans le magasin de réglages, pas dans une sauvegarde de niveau, parce que
-c'est exactement ce qu'ils sont : de l'état de profil.
+**Mémoire est la boucle longue.** Les axes sont liés à une image par nécessité,
+et Mémoire est l'exception achetée à cette règle : un pourcentage des niveaux de
+la dernière toile *terminée* est repris sur la suivante, jusqu'à la moitié. Seule
+une vraie fin de niveau met cet instantané à jour — un redémarrage ne le fait
+jamais, sans quoi il suffirait de recommencer pour mettre un build en banque.
+
+### Ce que vaut une toile
+
+Quatre choses rendent une image difficile, et chacune est une ligne lisible sur
+le panneau de fin plutôt qu'un nombre à croire sur parole :
+
+| Ligne | Ce qu'elle mesure |
+|---|---|
+| Pixels détruits | `playablePixels / 50 000` — une photo dense vaut plus qu'un logo transparent |
+| Palette | `1 + (couleurs − 6) × 0,10` — chaque couleur est une file, un canon et un goulot de plus |
+| Couleurs rares | `1 + rares × 0,15` — celles qui se cachent derrière la façade d'une autre |
+| Passage | `1 + (passage − 1) × 0,25` — revenir sur une image connue rapporte moins, jamais rien |
+
+La ligne « couleurs rares » est ce qui donne enfin une valeur mécanique à la
+préservation des micro-couleurs : une couleur descendue à une fraction de pour
+cent est exactement celle qui bloque une partie derrière une autre, et c'est
+précisément ce que la détection de palette a été construite pour garder.
+
+Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs rares :
+`12 × 1,20 × 1,75 = 25 éclats`.
+
+Ils sont rangés dans le magasin de réglages, pas dans une sauvegarde de niveau,
+parce que c'est exactement ce qu'ils sont : de l'état de profil.
 
 **Trieuse et Automate se gagnent** au lieu d'être donnés. Ils ne veulent dire
 quelque chose que pour quelqu'un qui a déjà fini une toile et sait ce qui est

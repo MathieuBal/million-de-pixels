@@ -294,9 +294,9 @@ export class UpgradeState {
 
   effects(bonus: PermanentBonus = NO_PERMANENT_BONUS): UpgradeEffects {
     return {
-      moveSpeed: valueOf("vitesse", this.levelOf("vitesse")),
+      moveSpeed: Math.round(valueOf("vitesse", this.levelOf("vitesse")) * bonus.speedMultiplier),
       maxActiveCannons: valueOf("canons", this.levelOf("canons")) + bonus.extraCannons,
-      ammoPerLoad: valueOf("munitions", this.levelOf("munitions")),
+      ammoPerLoad: Math.round(valueOf("munitions", this.levelOf("munitions")) * bonus.ammoMultiplier),
       visibleLoads: valueOf("cases", this.levelOf("cases")),
       fragmentsPerPixel: valueOf("gain", this.levelOf("gain")) * bonus.fragmentMultiplier,
       offlineMultiplier: valueOf("veille", this.levelOf("veille")) * bonus.offlineMultiplier,

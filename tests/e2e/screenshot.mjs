@@ -58,6 +58,17 @@ try {
     if (await card.count()) { await card.click(); await page.waitForTimeout(150); }
   }
   await page.waitForTimeout(1500);
+  if (process.env.SHOT_CLEAR) {
+    await page.evaluate(() => {
+      const world = window.__game.getWorld();
+      const rng = { nextInt: () => 0, nextFloat: () => 0, nextUint32: () => 1 };
+      for (let c = 0; c < world.paletteSize; c++) {
+        world.destroyRandomOfColor(c, world.aliveByColor(c), rng);
+      }
+    });
+    await page.waitForSelector("#run-menu:not([hidden])", { timeout: 15000 });
+    await page.waitForTimeout(400);
+  }
   if (process.env.SHOT_PANEL) {
     await page.locator("#pause").click();
     await page.waitForSelector("#upgrade-panel:not([hidden])");
