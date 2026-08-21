@@ -2,33 +2,19 @@ import { CANNON_MOVE_SPEED } from "../cannon/ActiveCannon";
 import { DEFAULT_LOAD_AMMO } from "../cannon/CannonLoad";
 import { VISIBLE_LOADS } from "../cannon/CannonQueue";
 import { MAX_ACTIVE_CANNONS } from "../combat/CombatSimulator";
-import type { EffectLoadout } from "../combat/SpecialEffects";
 import { NO_PERMANENT_BONUS, type PermanentBonus } from "./MetaProgression";
 
-export type UpgradeId =
-  | "vitesse"
-  | "canons"
-  | "munitions"
-  | "cases"
-  | "gain"
-  | "veille"
-  | "perce"
-  | "perceForce"
-  | "explosion"
-  | "explosionRayon"
-  | "foudre"
-  | "foudreArcs";
+export type UpgradeId = "vitesse" | "canons" | "munitions" | "cases" | "gain" | "veille";
 
-export type UpgradeFamily = "rail" | "cases" | "economie" | "effets";
+export type UpgradeFamily = "rail" | "cases" | "economie";
 
 export const FAMILY_LABELS: Record<UpgradeFamily, string> = {
   rail: "Rail",
   cases: "Cases",
   economie: "Économie",
-  effets: "Tirs spéciaux",
 };
 
-export const FAMILY_ORDER: UpgradeFamily[] = ["rail", "cases", "economie", "effets"];
+export const FAMILY_ORDER: UpgradeFamily[] = ["rail", "cases", "economie"];
 
 export interface UpgradeDefinition {
   id: UpgradeId;
@@ -135,82 +121,6 @@ export const UPGRADES: UpgradeDefinition[] = [
     format: (value) => `×${value.toFixed(2)} hors-ligne`,
   },
 
-  // --- Tirs spéciaux ----------------------------------------------------
-  // A chance and a power per specialisation: the chance says how often the
-  // crossing does something else, the power says how far it goes. Buying the
-  // power without the chance is wasted, which is the choice being offered.
-  {
-    id: "perce",
-    family: "effets",
-    label: "Perce",
-    glyph: "→",
-    description: "Chance d'atteindre sa couleur derrière un obstacle",
-    maxLevel: 60,
-    basePrice: 900,
-    priceGrowth: 1.075,
-    valueAt: (level) => Math.min(0.75, level * 0.0125),
-    format: (value) => `${(value * 100).toFixed(1)} %`,
-  },
-  {
-    id: "perceForce",
-    family: "effets",
-    label: "Pointe",
-    glyph: "⇥",
-    description: "Cellules étrangères qu'un tir perçant traverse",
-    maxLevel: 30,
-    basePrice: 1600,
-    priceGrowth: 1.14,
-    valueAt: (level) => level,
-    format: (value) => `${value} cellules`,
-  },
-  {
-    id: "explosion",
-    family: "effets",
-    label: "Éclat",
-    glyph: "✳",
-    description: "Chance qu'un pixel détruit emporte ses voisins",
-    maxLevel: 60,
-    basePrice: 1100,
-    priceGrowth: 1.08,
-    valueAt: (level) => Math.min(0.6, level * 0.01),
-    format: (value) => `${(value * 100).toFixed(1)} %`,
-  },
-  {
-    id: "explosionRayon",
-    family: "effets",
-    label: "Souffle",
-    glyph: "◎",
-    description: "Rayon de l'explosion, sur la couleur visée",
-    maxLevel: 20,
-    basePrice: 2200,
-    priceGrowth: 1.22,
-    valueAt: (level) => level,
-    format: (value) => `${value} blocs`,
-  },
-  {
-    id: "foudre",
-    family: "effets",
-    label: "Foudre",
-    glyph: "⚡",
-    description: "Chance qu'un arc saute sur un voisin de la même couleur",
-    maxLevel: 60,
-    basePrice: 1300,
-    priceGrowth: 1.085,
-    valueAt: (level) => Math.min(0.6, level * 0.01),
-    format: (value) => `${(value * 100).toFixed(1)} %`,
-  },
-  {
-    id: "foudreArcs",
-    family: "effets",
-    label: "Chaîne",
-    glyph: "⌇",
-    description: "Sauts successifs de l'arc",
-    maxLevel: 40,
-    basePrice: 1800,
-    priceGrowth: 1.16,
-    valueAt: (level) => level,
-    format: (value) => `${value} sauts`,
-  },
 ];
 
 export const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
@@ -226,7 +136,6 @@ export interface UpgradeEffects {
   fragmentsPerPixel: number;
   /** Multiplier on what the offline catch-up produces. */
   offlineMultiplier: number;
-  effects: EffectLoadout;
 }
 
 /**
@@ -241,6 +150,8 @@ export class UpgradeState {
   private readonly levels: Map<UpgradeId, number>;
   private earned: number;
   private spent: number;
+  /** Négoce, from the profile. 1 is the undiscounted price. */
+  private priceMultiplier = 1;
 
   constructor(levels: UpgradeLevels = {}, earned = 0, spent = 0) {
     this.levels = new Map(UPGRADES.map((u) => [u.id, levels[u.id] ?? 0]));
@@ -266,11 +177,34 @@ export class UpgradeState {
     return definition ? this.levelOf(id) >= definition.maxLevel : true;
   }
 
+  /**
+   * The profile's shop discount. Applied at the price rather than at the
+   * balance so the player sees what they are getting: the number on the button
+   * is the number Négoce changed.
+   */
+  setPriceMultiplier(multiplier: number): void {
+    this.priceMultiplier = Math.max(0.01, multiplier);
+  }
+
   /** Cost of the next level, or null when the axis is maxed out. */
   priceOf(id: UpgradeId): number | null {
     const definition = UPGRADE_BY_ID.get(id);
     if (!definition || this.isMaxed(id)) return null;
-    return Math.round(definition.basePrice * definition.priceGrowth ** this.levelOf(id));
+    const full = definition.basePrice * definition.priceGrowth ** this.levelOf(id);
+    return Math.max(1, Math.round(full * this.priceMultiplier));
+  }
+
+  /** The cheapest axis still worth buying, or null. Emplette runs on this. */
+  cheapestAffordable(): UpgradeId | null {
+    let best: UpgradeId | null = null;
+    let bestPrice = Number.POSITIVE_INFINITY;
+    for (const definition of UPGRADES) {
+      const price = this.priceOf(definition.id);
+      if (price === null || price > this.balance || price >= bestPrice) continue;
+      best = definition.id;
+      bestPrice = price;
+    }
+    return best;
   }
 
   canAfford(id: UpgradeId): boolean {
@@ -300,14 +234,6 @@ export class UpgradeState {
       visibleLoads: valueOf("cases", this.levelOf("cases")),
       fragmentsPerPixel: valueOf("gain", this.levelOf("gain")) * bonus.fragmentMultiplier,
       offlineMultiplier: valueOf("veille", this.levelOf("veille")) * bonus.offlineMultiplier,
-      effects: {
-        pierceChance: valueOf("perce", this.levelOf("perce")),
-        pierceDepth: valueOf("perceForce", this.levelOf("perceForce")),
-        explosionChance: valueOf("explosion", this.levelOf("explosion")),
-        explosionRadius: valueOf("explosionRayon", this.levelOf("explosionRayon")),
-        lightningChance: valueOf("foudre", this.levelOf("foudre")),
-        lightningArcs: valueOf("foudreArcs", this.levelOf("foudreArcs")),
-      },
     };
   }
 

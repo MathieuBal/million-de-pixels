@@ -23,6 +23,10 @@ export interface EffectLoadout {
   lightningChance: number;
   /** How many times the arc jumps on. */
   lightningArcs: number;
+  /** Chance a fire takes hold where the cell died. */
+  fireChance: number;
+  /** Cells the fire works through as it spreads. */
+  fireSpread: number;
 }
 
 /**
@@ -43,6 +47,8 @@ export const NO_EFFECTS: EffectLoadout = {
   explosionRadius: 0,
   lightningChance: 0,
   lightningArcs: 0,
+  fireChance: 0,
+  fireSpread: 0,
 };
 
 export interface EffectOutcome {
@@ -52,6 +58,7 @@ export interface EffectOutcome {
   pierced: boolean;
   exploded: boolean;
   sparked: boolean;
+  burned: boolean;
 }
 
 /**
@@ -88,6 +95,7 @@ export function resolveEffects(
     pierced: false,
     exploded: false,
     sparked: false,
+    burned: false,
   };
   if (budget <= 0) return outcome;
 
@@ -106,6 +114,10 @@ export function resolveEffects(
 
   if (killedIndex >= 0 && loadout.lightningChance > 0 && rng.nextFloat() < loadout.lightningChance) {
     outcome.sparked = strike(world, colorId, killedIndex, loadout.lightningArcs, rng, spend);
+  }
+
+  if (killedIndex >= 0 && loadout.fireChance > 0 && rng.nextFloat() < loadout.fireChance) {
+    outcome.burned = burn(world, colorId, killedIndex, loadout.fireSpread, spend);
   }
 
   if (loadout.pierceChance > 0 && rng.nextFloat() < loadout.pierceChance) {
@@ -233,19 +245,67 @@ function strike(
   return jumped;
 }
 
-/** One of the four touching cells still holding `colorId`, or -1. */
-function pickNeighbour(world: PixelWorld, colorId: number, index: number, rng: Rng): number {
-  const x = index % WORLD_WIDTH;
-  const y = (index / WORLD_WIDTH) | 0;
+/**
+ * An incendie: it eats the colour region outwards from the kill.
+ *
+ * The three specialisations have to *look* different or they are one upgrade
+ * bought three times. Explosion stamps a disc on the picture regardless of what
+ * is under it; lightning walks a thin line along the colour; fire floods it —
+ * breadth-first over touching cells of the same colour, so what it leaves is
+ * the shape of the region itself, eaten from one point outwards until the
+ * spread or the stock runs out.
+ */
+function burn(
+  world: PixelWorld,
+  colorId: number,
+  center: number,
+  spread: number,
+  spend: (index: number) => boolean,
+): boolean {
+  if (spread <= 0) return false;
 
-  const candidates: number[] = [];
-  if (x > 0 && world.colorId[index - 1] === colorId) candidates.push(index - 1);
-  if (x < WORLD_WIDTH - 1 && world.colorId[index + 1] === colorId) candidates.push(index + 1);
-  if (y > 0 && world.colorId[index - WORLD_WIDTH] === colorId) candidates.push(index - WORLD_WIDTH);
-  if (y < WORLD_HEIGHT - 1 && world.colorId[index + WORLD_WIDTH] === colorId) {
-    candidates.push(index + WORLD_WIDTH);
+  // Breadth-first, so the fire grows as a front rather than sprinting down one
+  // arm of the region. `seen` is a plain Set: the frontier is bounded by the
+  // spread the player bought, never by the size of the board.
+  const queue: number[] = [center];
+  const seen = new Set<number>([center]);
+  let burned = 0;
+  let any = false;
+
+  while (queue.length > 0 && burned < spread) {
+    const index = queue.shift()!;
+
+    for (const next of neighboursOf(index)) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      if (world.colorId[next] !== colorId) continue;
+      if (!spend(next)) return any;
+
+      burned++;
+      any = true;
+      queue.push(next);
+      if (burned >= spread) break;
+    }
   }
 
+  return any;
+}
+
+/** The four touching cells, clipped to the board. */
+function neighboursOf(index: number): number[] {
+  const x = index % WORLD_WIDTH;
+  const y = (index / WORLD_WIDTH) | 0;
+  const out: number[] = [];
+  if (x > 0) out.push(index - 1);
+  if (x < WORLD_WIDTH - 1) out.push(index + 1);
+  if (y > 0) out.push(index - WORLD_WIDTH);
+  if (y < WORLD_HEIGHT - 1) out.push(index + WORLD_WIDTH);
+  return out;
+}
+
+/** One of the four touching cells still holding `colorId`, or -1. */
+function pickNeighbour(world: PixelWorld, colorId: number, index: number, rng: Rng): number {
+  const candidates = neighboursOf(index).filter((n) => world.colorId[n] === colorId);
   if (candidates.length === 0) return -1;
   return candidates[Math.min(candidates.length - 1, (rng.nextFloat() * candidates.length) | 0)];
 }

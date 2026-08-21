@@ -118,6 +118,37 @@ export class PixelWorld {
     return PixelWorld.create(this.palette, this.baseColorId.slice());
   }
 
+  /**
+   * Which colours a cannon could actually hit right now.
+   *
+   * A colour can be alive and unreachable: buried behind another one from every
+   * side, it is what strands a run, and nothing in the interface used to say so
+   * — the player only saw a count that would not go down. This walks the four
+   * approach directions of every lane and reads the exposed cell, which
+   * `SurfaceIndex` answers in one lookup, so it is four thousand reads rather
+   * than a million.
+   */
+  reachableColors(): boolean[] {
+    const out = new Array<boolean>(this.paletteSize).fill(false);
+    let found = 0;
+
+    for (const axis of ["row", "column"] as const) {
+      const lanes = axis === "row" ? this.height : this.width;
+      for (const direction of [1, -1] as const) {
+        for (let lane = 0; lane < lanes; lane++) {
+          const index = this.surface.frontIndex(axis, lane, direction);
+          if (index < 0) continue;
+          const colour = this.colorId[index];
+          if (colour >= this.paletteSize || out[colour]) continue;
+          out[colour] = true;
+          if (++found === this.paletteSize) return out;
+        }
+      }
+    }
+
+    return out;
+  }
+
   /** A living cell of some colour: not a hole, not a transparent margin. */
   isSolid(pixelIndex: number): boolean {
     const cell = this.colorId[pixelIndex];

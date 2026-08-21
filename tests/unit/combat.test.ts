@@ -618,3 +618,34 @@ describe("CombatSimulator", () => {
     expect(world.destroyedCount()).toBe(0);
   });
 });
+
+describe("PixelWorld.reachableColors", () => {
+  it("separates what a cannon can hit from what is buried behind it", () => {
+    // Colour 1 walls colour 0 in from every side: alive, and unreachable until
+    // the facade falls. Nothing in the interface used to say so — the player
+    // saw a count that would not move.
+    const colorId = new Uint8Array(PIXEL_COUNT).fill(DEAD);
+    for (let y = 400; y < 412; y++) {
+      for (let x = 400; x < 412; x++) {
+        const border = y === 400 || y === 411 || x === 400 || x === 411;
+        colorId[y * WORLD_WIDTH + x] = border ? 1 : 0;
+      }
+    }
+    const world = PixelWorld.create(makePalette(3, [100, 44, 0]), colorId);
+
+    expect(world.reachableColors()).toEqual([false, true, false]);
+
+    // Strip the shell and the colour behind it comes into range.
+    for (let y = 400; y < 412; y++) {
+      for (let x = 400; x < 412; x++) {
+        if (world.colorId[y * WORLD_WIDTH + x] === 1) world.destroy(y * WORLD_WIDTH + x);
+      }
+    }
+    expect(world.reachableColors()).toEqual([true, false, false]);
+  });
+
+  it("reports nothing on an empty board", () => {
+    const world = PixelWorld.create(makePalette(2, [0, 0]), new Uint8Array(PIXEL_COUNT).fill(DEAD));
+    expect(world.reachableColors()).toEqual([false, false]);
+  });
+});

@@ -702,6 +702,46 @@ html, body {
 .tool-toggle[hidden] { display: none; }
 .tool-toggle[data-on="true"] { border-color: var(--accent); color: var(--accent); }
 
+/* The palette board: every colour of the toile, and what can still be hit. */
+.palette-board { padding: 8px var(--screen-pad) 0; }
+.palette-board[hidden] { display: none; }
+.palette-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 6px;
+  max-height: 148px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.palette-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+.palette-cell .swatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.palette-cell .count { font-family: var(--mono); font-size: 13px; color: var(--text-2); }
+.palette-cell .tag { font-size: 10px; color: var(--muted-2); }
+/* Reachable now, buried behind another colour, or gone: the three states the
+   whole game turns on, and the only ones worth colouring differently. */
+.palette-cell[data-state="open"] { border-color: var(--accent); }
+.palette-cell[data-state="open"] .tag { color: var(--accent); }
+.palette-cell[data-state="buried"] { opacity: 0.72; }
+.palette-cell[data-state="gone"] { opacity: 0.35; }
+.palette-cell[data-state="gone"] .swatch { filter: grayscale(1); }
+
 .upgrade-tabs { display: flex; gap: 6px; }
 .upgrade-tab {
   flex: 1;
@@ -716,6 +756,11 @@ html, body {
   cursor: pointer;
 }
 .upgrade-tab[data-active="true"] { border-color: var(--accent); color: var(--text); }
+/* An unlock reads as a door, a point node as a dial. */
+.upgrade-row[data-kind="unlock"] { border: 1px solid var(--line-2); border-radius: 12px; padding: 6px 8px; }
+.upgrade-row[data-kind="unlock"] .meta { line-height: 1.35; }
+.upgrade-row[data-kind="stat"] .chip { opacity: 0.7; }
+
 .upgrade-family {
   padding: 10px 2px 2px;
   font-size: 11px;

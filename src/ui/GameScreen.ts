@@ -2,6 +2,7 @@ import type { GameController } from "../app/GameController";
 import type { Milestone } from "../app/milestones";
 import { PERIMETER } from "../combat/Cannon";
 import { WORLD_HEIGHT, WORLD_WIDTH } from "../core/constants";
+import { PaletteBoard } from "./PaletteBoard";
 import { QueueTools } from "./QueueTools";
 import { UpgradePanel } from "./UpgradePanel";
 import { cssColor, formatCompact, formatCount, formatPercent, inkOn } from "./format";
@@ -42,6 +43,7 @@ export class GameScreen {
 
   readonly upgrades: UpgradePanel;
   readonly queueTools: QueueTools;
+  readonly paletteBoard: PaletteBoard;
 
   private toastTimer = 0;
   private lastSampleMs = 0;
@@ -51,6 +53,7 @@ export class GameScreen {
   constructor(private readonly game: GameController) {
     this.upgrades = new UpgradePanel(game);
     this.queueTools = new QueueTools(game);
+    this.paletteBoard = new PaletteBoard(game);
 
     window.addEventListener("keydown", (event) => {
       if (event.key === "d" && event.altKey) this.toggleDebug();
@@ -140,6 +143,7 @@ export class GameScreen {
     this.renderSlots();
     this.renderCards();
     this.queueTools.render();
+    this.paletteBoard.render();
     this.upgrades.update();
 
     if (!this.debugPanel.hidden) this.renderDebug();

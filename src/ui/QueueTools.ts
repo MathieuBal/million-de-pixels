@@ -30,7 +30,7 @@ export class QueueTools {
     const bonus = this.game.permanentBonus();
     if (!world) return;
 
-    this.root.hidden = !bonus.canFilterQueue && !bonus.canAutoLaunch;
+    this.root.hidden = !bonus.canFilterQueue && !bonus.canAutoLaunch && !bonus.canSeePalette;
     if (this.root.hidden) return;
 
     this.auto.hidden = !bonus.canAutoLaunch;

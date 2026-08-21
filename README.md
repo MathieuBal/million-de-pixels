@@ -180,7 +180,9 @@ L'image finance sa propre destruction : un pixel détruit vaut un fragment. Quat
 axes, achetés dans un panneau et appliqués immédiatement — y compris aux canons
 déjà sur le rail, sans quoi un achat semblerait sans effet.
 
-Douze axes, en quatre familles.
+**En jeu, ça reste court** : six axes, trois familles. Les capacités et leurs
+réglages vivent dans l'arbre entre les toiles, pas dans la boutique qu'on ouvre
+toutes les trente secondes.
 
 | Famille | Axe | Effet | Base → max | Paliers |
 |---|---|---|---|---:|
@@ -190,12 +192,6 @@ Douze axes, en quatre familles.
 | Cases | Étal | cases proposées | 8 → 48 | 40 |
 | Économie | Alliage | fragments par pixel | ×1 → ×7 | 120 |
 | Économie | Veille | production hors-ligne | ×1 → ×7 | 80 |
-| Tirs | Perce | chance d'atteindre sa couleur derrière un obstacle | 0 → 75 % | 60 |
-| Tirs | Pointe | cellules étrangères traversées | 0 → 30 | 30 |
-| Tirs | Éclat | chance d'emporter les voisins | 0 → 60 % | 60 |
-| Tirs | Souffle | rayon de l'explosion | 0 → 20 | 20 |
-| Tirs | Foudre | chance qu'un arc saute sur un voisin | 0 → 60 % | 60 |
-| Tirs | Chaîne | sauts successifs de l'arc | 0 → 40 | 40 |
 
 **Pistes longues, petits pas.** Chaque axe court sur dix fois plus de paliers
 qu'à l'origine, chacun valant environ un dixième, avec un prix qui croît à la
@@ -235,24 +231,55 @@ repartir des valeurs de base, sinon la première passe de chaque image après la
 première serait finie avant d'avoir commencé. Restait à donner un intérêt à
 terminer une toile — ce sont les **éclats**.
 
-| Permanent | Effet |
+L'arbre a trois sortes de nœud, parce qu'ils répondent à trois questions
+différentes.
+
+**`point` — une seule case qu'on fait monter, sans plafond.** Un cinquième de
+pour cent à la fois, avec un prix qui monte *linéairement* : `base + points ×
+pas`. Une courbe géométrique transformerait un nœud sans limite en nœud limité
+au bout de vingt points, ce qui est exactement la forme que ça remplace. Cent
+points de Fondation coûtent moins de vingt fois le premier.
+
+| Fondations | Effet par point |
 |---|---|
-| Héritage | fragments offerts au début de chaque image |
-| Élan | fragments par pixel, sur toutes les images |
-| Socle | canons simultanés dès le départ |
-| Somnambule | production hors-ligne, sur toutes les images |
-| Fondation | vitesse de rail de départ |
-| Atelier | munitions par case de départ |
-| Prospecteur | éclats gagnés en terminant une toile |
-| **Mémoire** | **niveaux d'améliorations repris sur la toile suivante** |
-| Trieuse | filtrer et trier les cases par couleur |
-| Automate | lancer les cases toutes seules dès qu'un slot se libère |
+| Négoce | −0,2 % sur les prix en boutique |
+| Fondation | +0,2 % vitesse de rail de départ |
+| Atelier | +0,2 % munitions de départ |
+| Élan | +0,2 % fragments par pixel |
+| Prospecteur | +0,2 % éclats gagnés |
+| Somnambule | +0,2 % production hors-ligne |
+| Héritage | +400 fragments au début de chaque image |
+| Mémoire | +0,2 % des niveaux repris (plafonné à 60 %) |
+| Socle | +1 canon simultané |
+
+**`unlock` — une porte.** Un seul niveau, cher, et il ouvre une branche. Un canon
+ne perce pas, n'explose pas, n'arque pas et ne brûle pas tant que le profil ne
+l'a pas payé une fois.
+
+| Capacité | Prix | Ce qu'elle fait |
+|---|---:|---|
+| Perce | 100 ◆ | atteindre sa couleur derrière ce qui la couvre |
+| Explosion | 140 ◆ | un disque de sa couleur autour du pixel abattu |
+| Foudre | 180 ◆ | un arc qui saute de voisin en voisin |
+| Feu | 240 ◆ | un incendie qui inonde la région de couleur |
+
+**`stat` — un nœud `point` derrière une porte.** Rayon, rebonds, propagation,
+chance de proc : les nombres qui ne veulent rien dire tant que la capacité
+n'existe pas. Une branche n'apparaît qu'une fois sa capacité achetée — afficher
+vingt-cinq lignes grisées à la première toile dirait « voici tout ce que tu n'as
+pas », alors que la porte seule dit « voici la prochaine chose à vouloir ».
+
+**Les trois effets doivent se ressembler le moins possible**, sinon c'est une
+amélioration achetée trois fois. L'explosion estampe un disque sur l'image sans
+regarder ce qu'il y a dessous ; la foudre marche en ligne fine le long de la
+couleur ; le feu l'inonde — en largeur d'abord, de proche en proche, donc ce
+qu'il laisse est la forme de la région elle-même, mangée depuis un point.
 
 **Mémoire est la boucle longue.** Les axes sont liés à une image par nécessité,
 et Mémoire est l'exception achetée à cette règle : un pourcentage des niveaux de
-la dernière toile *terminée* est repris sur la suivante, jusqu'à la moitié. Seule
-une vraie fin de niveau met cet instantané à jour — un redémarrage ne le fait
-jamais, sans quoi il suffirait de recommencer pour mettre un build en banque.
+la dernière toile *terminée* est repris sur la suivante. Seule une vraie fin de
+niveau met cet instantané à jour — un redémarrage ne le fait jamais, sans quoi il
+suffirait de recommencer pour mettre un build en banque.
 
 ### Ce que vaut une toile
 
@@ -277,11 +304,28 @@ Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs ra
 Ils sont rangés dans le magasin de réglages, pas dans une sauvegarde de niveau,
 parce que c'est exactement ce qu'ils sont : de l'état de profil.
 
-**Trieuse et Automate se gagnent** au lieu d'être donnés. Ils ne veulent dire
-quelque chose que pour quelqu'un qui a déjà fini une toile et sait ce qui est
-pénible dans la suivante : chercher la couleur goulot parmi huit offres au
-hasard, et cliquer la même case quelques centaines de fois. Tant qu'ils ne sont
-pas achetés, la rangée n'existe pas et une première passe garde sa forme.
+### Le confort se gagne
+
+| Nœud | Prix | Ce qu'il retire de pénible |
+|---|---:|---|
+| Nuancier | 40 ◆ | la palette entière, avec les couleurs encore atteignables mises en évidence |
+| Trieuse | 70 ◆ | filtrer les cases proposées sur une seule couleur |
+| Automate | 110 ◆ | les cases partent toutes seules dès qu'un emplacement se libère |
+| Emplette | 200 ◆ | achète l'amélioration la moins chère dès qu'elle est payable |
+
+Aucun n'est donné : ils ne veulent dire quelque chose que pour quelqu'un qui a
+déjà fini une toile et sait ce qui est pénible dans la suivante — chercher la
+couleur goulot parmi huit offres au hasard, cliquer la même case des centaines de
+fois, rouvrir la boutique toutes les trente secondes. Tant qu'ils ne sont pas
+achetés, la rangée n'existe pas et une première passe garde sa forme.
+
+**Le nuancier explique le problème central du jeu.** Une couleur peut être
+vivante et inatteignable : enterrée derrière une autre de tous les côtés, elle
+est ce qui bloque une partie, et rien nulle part ne le disait — le joueur voyait
+un compteur qui refusait de descendre. `PixelWorld.reachableColors()` parcourt
+les quatre sens d'approche de chaque voie et lit la cellule exposée, ce que
+`SurfaceIndex` donne en une lecture : quatre mille lectures, pas un million.
+Chaque couleur est alors *à portée*, *enterrée* ou *épuisée*.
 
 `blastRadius` reste une option de `CombatSimulator` par défaut à zéro : c'est le
 point d'accroche du futur système d'effets, pas un axe achetable.

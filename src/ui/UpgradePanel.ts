@@ -5,7 +5,13 @@ import {
   UPGRADES,
   type UpgradeDefinition,
 } from "../progression/Upgrades";
-import { META_UPGRADES, type MetaUpgradeId } from "../progression/MetaProgression";
+import {
+  BRANCH_LABELS,
+  BRANCH_ORDER,
+  META_UPGRADES,
+  type MetaUpgradeDefinition,
+  type MetaUpgradeId,
+} from "../progression/MetaProgression";
 import { formatCount } from "./format";
 
 /** Axes shown as shortcuts in the bottom row — all four of them. */
@@ -190,55 +196,81 @@ export class UpgradePanel {
   }
 
   /**
-   * Éclats, and what they buy.
+   * The talent tree.
    *
    * Kept in the same panel behind a tab rather than in a screen of its own: it
    * is the same decision — spend now or save — only in the currency that
-   * survives the image, and a player comparing the two should not have to
+   * survives the image, and a player weighing the two should not have to
    * navigate between them.
+   *
+   * A branch appears only once its capability is bought. Showing twenty-five
+   * greyed rows on a first clear would say "here is everything you do not
+   * have"; showing the locked capability alone says "here is the next thing to
+   * want", which is the same information and a better invitation.
    */
   private renderPermanent(): void {
     const meta = this.game.getMeta();
 
     const heading = document.createElement("div");
     heading.className = "upgrade-family";
-    heading.textContent = `Éclats · ${formatCount(meta.balance)} disponibles · ${meta.totalClears} toile(s) terminée(s)`;
+    heading.textContent =
+      `${formatCount(meta.balance)} éclats · ${meta.totalClears} toile(s) terminée(s)`;
     this.rows.appendChild(heading);
 
-    for (const definition of META_UPGRADES) {
-      const level = meta.levelOf(definition.id);
-      const price = meta.priceOf(definition.id);
-      const maxed = price === null;
+    for (const branch of BRANCH_ORDER) {
+      const nodes = META_UPGRADES.filter(
+        (node) => node.branch === branch && meta.isAvailable(node.id),
+      );
+      if (nodes.length === 0) continue;
 
-      const row = document.createElement("div");
-      row.className = "upgrade-row";
+      if (branch !== "racine") {
+        const title = document.createElement("div");
+        title.className = "upgrade-family";
+        title.textContent = BRANCH_LABELS[branch];
+        this.rows.appendChild(title);
+      }
 
-      const chip = document.createElement("span");
-      chip.className = "chip";
-      chip.textContent = definition.glyph;
-
-      const unlock = definition.maxLevel === 1;
-      const current = definition.format(definition.valueAt(level));
-      const next = maxed || unlock ? "" : ` → ${definition.format(definition.valueAt(level + 1))}`;
-
-      const text = document.createElement("span");
-      text.className = "text";
-      text.innerHTML =
-        `<span class="name">${definition.label}${unlock ? "" : ` · niv. ${level}`}</span>` +
-        `<span class="meta">${definition.description} — ${current}${next}</span>`;
-
-      const button = document.createElement("button");
-      button.className = "price";
-      button.type = "button";
-      button.disabled = maxed || !meta.canAfford(definition.id);
-      button.textContent = maxed ? (unlock ? "acquis" : "max") : `${formatCount(price)} ◆`;
-      button.title = definition.description;
-      button.addEventListener("click", () => {
-        if (this.game.buyMetaUpgrade(definition.id as MetaUpgradeId)) this.renderPanel();
-      });
-
-      row.append(chip, text, button);
-      this.rows.appendChild(row);
+      for (const node of nodes) this.rows.appendChild(this.metaRow(node));
     }
+  }
+
+  private metaRow(definition: MetaUpgradeDefinition): HTMLElement {
+    const meta = this.game.getMeta();
+    const points = meta.levelOf(definition.id);
+    const price = meta.priceOf(definition.id);
+    const maxed = price === null;
+    const unlock = definition.kind === "unlock";
+    const owned = unlock && points > 0;
+
+    const row = document.createElement("div");
+    row.className = "upgrade-row";
+    row.dataset.kind = definition.kind;
+
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    chip.textContent = definition.glyph;
+
+    const current = definition.format(definition.valueAt(points));
+    const next =
+      maxed || unlock ? "" : ` → ${definition.format(definition.valueAt(points + 1))}`;
+
+    const text = document.createElement("span");
+    text.className = "text";
+    text.innerHTML =
+      `<span class="name">${definition.label}${unlock ? "" : ` · ${points} pt`}</span>` +
+      `<span class="meta">${unlock ? definition.description : `${current}${next}`}</span>`;
+
+    const button = document.createElement("button");
+    button.className = "price";
+    button.type = "button";
+    button.disabled = maxed || !meta.canAfford(definition.id);
+    button.textContent = owned ? "acquis" : maxed ? "max" : `${formatCount(price)} ◆`;
+    button.title = definition.description;
+    button.addEventListener("click", () => {
+      if (this.game.buyMetaUpgrade(definition.id as MetaUpgradeId)) this.renderPanel();
+    });
+
+    row.append(chip, text, button);
+    return row;
   }
 }
