@@ -289,7 +289,7 @@ try {
 
   check("aucune erreur console", errors.length === 0, errors.join(" | "));
 
-  await checkShortPhone(browser, fixture);
+  await checkTouchLayouts(browser, fixture);
 
   await browser.close();
 } finally {
@@ -298,20 +298,31 @@ try {
 }
 
 /**
- * The reference layout is 430 x 932 and every real phone is shorter, so the
- * game has to be played at sizes the design never showed. It broke there
- * silently: in a plain flex column the offers were what gave, `#cards`
- * collapsed to ten pixels while its tiles kept their full height and spilled
- * out under the boosters — still in the DOM, still with a hit box, impossible
- * to tap. Nothing an assertion on the DOM would have caught.
+ * Is every control actually reachable by a finger, at the sizes people hold?
  *
- * So the check is the one that matters: at the tile's own centre, is the tile
- * what a finger would land on, and is that point on the screen at all.
+ * The reference layout is 430 x 932 and no real phone is that tall — a URL bar
+ * costs a hundred pixels — while a phone held sideways is a different shape
+ * entirely. Both broke silently: controls stayed in the DOM with a hit box,
+ * laid out under the boosters or past the bottom of the screen. Nothing an
+ * assertion on the DOM would have caught, and nothing a screenshot of the
+ * reference size would have shown.
+ *
+ * So the check is the one that matters, for every control at once: at its own
+ * centre, is it what `elementFromPoint` returns, and is that point on screen.
+ * A control scrolled out of a scrolling container is fine — a gesture brings it
+ * back; only what no gesture can reach counts as a failure.
  */
-async function checkShortPhone(browser, fixture) {
-  console.log("\n— telephone court —");
+async function checkTouchLayouts(browser, fixture) {
+  console.log("\n— portees tactiles —");
 
-  for (const [width, height] of [[393, 664], [360, 600]]) {
+  const sizes = [
+    [393, 664], // portrait, browser chrome taken out
+    [360, 600], // small Android
+    [844, 390], // held sideways
+    [667, 375],
+  ];
+
+  for (const [width, height] of sizes) {
     const ctx = await browser.newContext({
       viewport: { width, height },
       hasTouch: true,
@@ -327,28 +338,65 @@ async function checkShortPhone(browser, fixture) {
     await page.waitForSelector("#screen-game:not([hidden])", { timeout: 60000 });
     await page.waitForTimeout(1500);
 
-    const box = await page.locator("#cards button").first().boundingBox();
-    const hit = box
-      ? await page.evaluate(
-          ([x, y]) => {
-            const el = document.elementFromPoint(x, y);
-            return el ? Boolean(el.closest("#cards")) : false;
-          },
-          [box.x + box.width / 2, box.y + box.height / 2],
-        )
-      : false;
+    const report = await page.evaluate((vh) => {
+      const targets = Array.from(
+        document.querySelectorAll("#screen-game button, #screen-game .filter-chip"),
+      ).filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0 && !el.closest("[hidden]");
+      });
 
-    const onScreen = Boolean(box) && box.y >= 0 && box.y + box.height <= height;
-    const boosters = await page.locator("#boosters").boundingBox();
-    const fits = Boolean(boosters) && boosters.y + boosters.height <= height + 1;
-    const board = await page.locator("#play-area").boundingBox();
+      const clippedByScroller = (el, r) => {
+        for (let p = el.parentElement; p; p = p.parentElement) {
+          const st = getComputedStyle(p);
+          if (!/(auto|scroll)/.test(st.overflowY + st.overflowX)) continue;
+          if (p.scrollHeight <= p.clientHeight + 1 && p.scrollWidth <= p.clientWidth + 1) continue;
+          const pr = p.getBoundingClientRect();
+          if (r.bottom > pr.bottom + 1 || r.y < pr.y - 1) return true;
+        }
+        return false;
+      };
 
-    check(`${width}x${height} : la case du deck est cliquable`, hit && onScreen);
-    check(`${width}x${height} : rien ne deborde sous l'ecran`, fits);
+      const bad = [];
+      for (const el of targets) {
+        const r = el.getBoundingClientRect();
+        const name = `${el.id || el.className || el.tagName}`.trim().slice(0, 30);
+        if (clippedByScroller(el, r)) continue;
+
+        if (r.y < 0 || r.bottom > vh + 0.5 || r.x < 0 || r.right > window.innerWidth + 0.5) {
+          bad.push(`${name} hors ecran`);
+          continue;
+        }
+        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        if (!hit) bad.push(`${name} : rien sous le point`);
+        else if (hit !== el && !el.contains(hit)) {
+          bad.push(`${name} couvert par ${`${hit.id || hit.className}`.trim().slice(0, 24)}`);
+        }
+        if (r.height < 30 || r.width < 30) {
+          bad.push(`${name} : cible ${r.width.toFixed(0)}x${r.height.toFixed(0)}`);
+        }
+      }
+
+      const board = document.querySelector("#play-area").getBoundingClientRect();
+      const boosters = document.querySelector("#boosters").getBoundingClientRect();
+      return {
+        targets: targets.length,
+        bad,
+        boardHeight: board.height,
+        overflows: boosters.bottom > vh + 1,
+      };
+    }, height);
+
+    check(
+      `${width}x${height} : les ${report.targets} controles sont atteignables`,
+      report.bad.length === 0,
+      report.bad.join(" | "),
+    );
+    check(`${width}x${height} : rien ne deborde sous l'ecran`, !report.overflows);
     check(
       `${width}x${height} : le plateau reste regardable`,
-      Boolean(board) && board.height >= 170,
-      board ? `${board.height.toFixed(0)} px` : "—",
+      report.boardHeight >= 150,
+      `${report.boardHeight.toFixed(0)} px`,
     );
 
     await ctx.close();

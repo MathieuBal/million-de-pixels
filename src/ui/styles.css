@@ -44,7 +44,15 @@
 
 html, body {
   margin: 0;
+  /*
+   * `100%` resolves against the *layout* viewport, which on a phone includes
+   * the strip behind a retracting URL bar. The bottom of the page then sits
+   * under the browser chrome — present, laid out, and impossible to touch.
+   * `dvh` tracks what is actually visible; the percentage stays as the fallback
+   * for anything that does not know the unit.
+   */
   height: 100%;
+  height: 100dvh;
   background: var(--bg);
   color: var(--text);
   font-family: var(--sans);
@@ -57,6 +65,7 @@ html, body {
   position: relative;
   width: min(100vw, 430px);
   height: 100%;
+  height: 100dvh;
   margin: 0 auto;
   background: var(--surface);
   overflow: hidden;
@@ -314,7 +323,9 @@ html, body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 30px var(--screen-pad) 8px;
+  /* viewport-fit=cover means the page runs under the notch and the home
+     indicator, so the insets have to be paid back by hand. */
+  padding: calc(30px + env(safe-area-inset-top, 0px)) var(--screen-pad) 8px;
 }
 
 .coin {
@@ -484,7 +495,7 @@ html, body {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  padding: 14px var(--screen-pad) 22px;
+  padding: 14px var(--screen-pad) calc(22px + env(safe-area-inset-bottom, 0px));
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
@@ -545,8 +556,8 @@ html, body {
 }
 .zoom[hidden] { display: none; }
 .zoom button {
-  width: 30px;
-  height: 26px;
+  width: 38px;
+  height: 34px;
   border-radius: 7px;
   background: var(--raise);
   border: 1px solid var(--line);
@@ -822,7 +833,10 @@ html, body {
  * and the booster row.
  */
 @media (max-height: 820px) {
-  .topbar { padding-top: 12px; padding-bottom: 4px; }
+  .topbar {
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+    padding-bottom: 4px;
+  }
 
   /*
    * The board takes what the fixed panels leave, with a floor under it: below
@@ -846,14 +860,16 @@ html, body {
   .cards button { padding: 5px 0 4px; }
   .cards .tile { width: 34px; height: 34px; font-size: 13px; }
 
-  .boosters { padding: 9px var(--screen-pad) 12px; }
+  .boosters {
+    padding: 9px var(--screen-pad) calc(12px + env(safe-area-inset-bottom, 0px));
+  }
   .booster { padding: 7px 0; }
 
   .zoom { right: 12px; bottom: 12px; padding: 3px; gap: 3px; }
-  .zoom button { width: 26px; height: 26px; }
+  .zoom button { width: 36px; height: 32px; }
 }
 
-/* ------------------------------------------------------------- 04 bureau */
+/* --------------------------------------------- 04 côte à côte : bureau et paysage */
 
 /*
  * The reference layout is a 430 x 932 phone, and it stays the layout: on a
@@ -866,7 +882,8 @@ html, body {
  * whatever rectangle the play area ends up with, and the layout pushes the new
  * size in on resize rather than the renderer polling for it.
  */
-@media (min-width: 1000px) and (min-height: 560px) {
+@media (min-width: 1000px) and (min-height: 560px),
+       (orientation: landscape) and (max-height: 560px) and (min-width: 560px) {
   #app { width: 100vw; }
 
   .screen-game {
@@ -912,4 +929,29 @@ html, body {
   .screen-import > * { width: min(560px, 100%); }
 
   .zoom { bottom: 16px; right: 16px; }
+}
+
+/*
+ * A phone held sideways is a wide, very short viewport: the portrait stack
+ * cannot fit and does not degrade — the offers and the boosters simply end up
+ * below the screen, laid out and untouchable. It gets the same side-by-side
+ * layout as a desktop, tightened: a narrower panel column, and offers that take
+ * what is left and scroll rather than a fixed two rows.
+ */
+@media (orientation: landscape) and (max-height: 560px) and (min-width: 560px) {
+  .screen-game {
+    grid-template-columns: minmax(0, 1fr) clamp(240px, 44vw, 360px);
+    /* One row of offers is the floor: a row that can reach zero lets the tiles
+       render past it and land on the boosters. */
+    grid-template-rows: auto auto auto auto minmax(76px, 1fr) auto;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+  .topbar { padding-top: calc(8px + env(safe-area-inset-top, 0px)); padding-bottom: 2px; }
+  .board-frame { margin: 0 6px 0 12px; min-height: 0; }
+  .progress { padding-top: 8px; }
+  .slots { padding-top: 8px; }
+  /* Clamped to its row and scrolling inside it, never spilling past it. */
+  .cards { height: 100%; min-height: 0; overflow-y: auto; padding-top: 6px; }
+  .boosters { padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 0px)); }
+  .booster { padding: 5px 0; }
 }

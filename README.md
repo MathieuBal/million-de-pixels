@@ -307,9 +307,25 @@ l'écran. Elles restaient dans le DOM avec une boîte de clic, donc rien n'avait
 l'air cassé et rien n'était cliquable. Rien au-dessus du plateau ne se rétracte
 plus, et sous 820 px de haut la pile se compacte — blocs de couleurs masqués,
 marges et tuiles resserrées — au lieu de voler sa place au plateau, qui garde un
-plancher de 190 px et cesse d'être carré. Le smoke le vérifie là où ça compte :
-au centre de la tuile, est-ce la tuile que le doigt touche, et ce point est-il à
-l'écran. Le plateau prend tout le reste, ce qui est
+plancher de 190 px et cesse d'être carré. 
+
+**Un téléphone tenu de côté est un écran large et très court** : la pile
+portrait n'y tient pas et ne se dégrade pas — les cases et les boosters
+finissaient simplement sous le bord de l'écran, disposés et intouchables. Le
+paysage reçoit donc la même mise en page côte à côte que le bureau, resserrée.
+
+**`100%` se résout contre le viewport de *mise en page***, qui inclut la bande
+derrière une barre d'URL rétractable : le bas de la page se retrouve sous la
+barre du navigateur. La hauteur est en `100dvh`, qui suit ce qui est réellement
+visible, avec le pourcentage en repli. Et comme la page est servie en
+`viewport-fit=cover`, les encoches et l'indicateur d'accueil sont remboursés à
+la main avec `env(safe-area-inset-*)`.
+
+Le smoke conduit un navigateur tactile à quatre tailles — deux portraits courts,
+deux paysages — et vérifie, **pour chaque contrôle à la fois**, ce qui compte :
+en son centre, est-ce lui que `elementFromPoint` renvoie, ce point est-il à
+l'écran, et sa cible fait-elle au moins 30 px. Un contrôle sorti d'une zone
+défilante ne compte pas : un geste le ramène. Le plateau prend tout le reste, ce qui est
 l'intérêt d'un grand écran — un million de cellules obtient enfin les pixels pour
 être regardé. La caméra se moque de la forme : `Viewport.setArea` reçoit le
 rectangle que la zone de jeu occupe réellement, et la mise en page pousse la
