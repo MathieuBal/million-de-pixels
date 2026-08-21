@@ -292,6 +292,23 @@ html, body {
 
 .screen-game { padding: 0; }
 
+/*
+ * Nothing below the board may shrink.
+ *
+ * The reference layout is 430 x 932, and every real phone is shorter than that
+ * — a URL bar alone costs a hundred pixels. In a plain flex column every child
+ * shrinks by default, so the offers were the ones that gave: `#cards` collapsed
+ * to ten pixels while its tiles kept their seventy-three and spilled out under
+ * the boosters, or off the screen entirely. The tiles were still in the DOM and
+ * still had a hit box, which is why nothing looked broken and nothing could be
+ * tapped.
+ *
+ * The board is the only thing that gives, because it is the only thing that
+ * reads fine at any size.
+ */
+.screen-game > * { flex: 0 0 auto; }
+.board-frame { flex: 0 1 auto; min-height: 0; }
+
 .topbar {
   display: flex;
   align-items: center;
@@ -353,6 +370,9 @@ html, body {
 .play-area {
   position: relative;
   aspect-ratio: 1;
+  /* Square is the preference, not a promise: on a short screen the board is a
+     rectangle and the camera frames it exactly the same way. */
+  max-height: 100%;
   border-radius: 11px;
   background: var(--well);
   /* Clips the board: at any zoom above the fit, the grid runs past this box. */
@@ -415,11 +435,13 @@ html, body {
 .cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+  align-content: start;
   gap: var(--gutter);
   padding: 10px var(--screen-pad) 0;
   /* The étal upgrade runs to forty-eight tiles, so the row that held eight has
-     to become a scrolling area rather than push the boosters off screen. */
-  max-height: 172px;
+     to become a scrolling area rather than push the boosters off screen. Two
+     rows are always visible; the rest scrolls. */
+  height: 172px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -785,6 +807,51 @@ html, body {
 .upgrade-row .price:hover:not(:disabled) { filter: brightness(1.08); }
 .upgrade-row .price:active:not(:disabled) { transform: scale(0.98); }
 .upgrade-row .price:disabled { background: #202028; color: var(--muted-2); cursor: not-allowed; }
+
+/* --------------------------------------------------------- 05 écran court */
+
+/*
+ * Every real phone is shorter than the 430 x 932 reference — a URL bar alone
+ * costs a hundred pixels, and a 360 x 600 handset is a third short. Something
+ * has to give, and it must not be the board: a plateau squeezed to a hundred
+ * pixels is not a game, it is a progress bar with extra steps.
+ *
+ * So the stack below it gets compact instead. The colour blocks are the first
+ * to go — the same numbers are one tap away in the debug panel and the bar
+ * above already says how far the run is — then the paddings, the tile height
+ * and the booster row.
+ */
+@media (max-height: 820px) {
+  .topbar { padding-top: 12px; padding-bottom: 4px; }
+
+  /*
+   * The board takes what the fixed panels leave, with a floor under it: below
+   * that it stops being worth looking at. It also stops being square — keeping
+   * `aspect-ratio` here shrinks the *width* to match the clamped height and
+   * leaves a band of empty frame beside it, and the camera frames a rectangle
+   * exactly as well as a square.
+   */
+  .board-frame { flex: 1 1 auto; min-height: 190px; padding: 9px; display: flex; }
+  .play-area { aspect-ratio: auto; flex: 1; min-height: 0; max-height: none; }
+  .board-frame .rail { inset: 9px; }
+  .rail-tokens { inset: 9px; }
+
+  .progress { padding-top: 12px; gap: 6px; }
+  .color-stats { display: none; }
+
+  .slots { padding-top: 10px; }
+  .slots > div { height: 40px; }
+
+  .cards { height: 132px; padding-top: 8px; }
+  .cards button { padding: 5px 0 4px; }
+  .cards .tile { width: 34px; height: 34px; font-size: 13px; }
+
+  .boosters { padding: 9px var(--screen-pad) 12px; }
+  .booster { padding: 7px 0; }
+
+  .zoom { right: 12px; bottom: 12px; padding: 3px; gap: 3px; }
+  .zoom button { width: 26px; height: 26px; }
+}
 
 /* ------------------------------------------------------------- 04 bureau */
 

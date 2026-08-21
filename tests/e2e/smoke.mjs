@@ -289,10 +289,70 @@ try {
 
   check("aucune erreur console", errors.length === 0, errors.join(" | "));
 
+  await checkShortPhone(browser, fixture);
+
   await browser.close();
 } finally {
   server.kill();
   fs.rmSync(tmp, { recursive: true, force: true });
+}
+
+/**
+ * The reference layout is 430 x 932 and every real phone is shorter, so the
+ * game has to be played at sizes the design never showed. It broke there
+ * silently: in a plain flex column the offers were what gave, `#cards`
+ * collapsed to ten pixels while its tiles kept their full height and spilled
+ * out under the boosters — still in the DOM, still with a hit box, impossible
+ * to tap. Nothing an assertion on the DOM would have caught.
+ *
+ * So the check is the one that matters: at the tile's own centre, is the tile
+ * what a finger would land on, and is that point on the screen at all.
+ */
+async function checkShortPhone(browser, fixture) {
+  console.log("\n— telephone court —");
+
+  for (const [width, height] of [[393, 664], [360, 600]]) {
+    const ctx = await browser.newContext({
+      viewport: { width, height },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+    });
+    const page = await ctx.newPage();
+
+    await page.goto(URL, { waitUntil: "networkidle" });
+    await page.setInputFiles("#file-input", fixture);
+    await page.waitForSelector("#start-run:not([disabled])", { timeout: 60000 });
+    await page.locator("#start-run").click();
+    await page.waitForSelector("#screen-game:not([hidden])", { timeout: 60000 });
+    await page.waitForTimeout(1500);
+
+    const box = await page.locator("#cards button").first().boundingBox();
+    const hit = box
+      ? await page.evaluate(
+          ([x, y]) => {
+            const el = document.elementFromPoint(x, y);
+            return el ? Boolean(el.closest("#cards")) : false;
+          },
+          [box.x + box.width / 2, box.y + box.height / 2],
+        )
+      : false;
+
+    const onScreen = Boolean(box) && box.y >= 0 && box.y + box.height <= height;
+    const boosters = await page.locator("#boosters").boundingBox();
+    const fits = Boolean(boosters) && boosters.y + boosters.height <= height + 1;
+    const board = await page.locator("#play-area").boundingBox();
+
+    check(`${width}x${height} : la case du deck est cliquable`, hit && onScreen);
+    check(`${width}x${height} : rien ne deborde sous l'ecran`, fits);
+    check(
+      `${width}x${height} : le plateau reste regardable`,
+      Boolean(board) && board.height >= 170,
+      board ? `${board.height.toFixed(0)} px` : "—",
+    );
+
+    await ctx.close();
+  }
 }
 
 console.log(failures.length === 0 ? "\nAll checks passed." : `\n${failures.length} check(s) failed.`);

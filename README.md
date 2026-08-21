@@ -296,7 +296,20 @@ mémoire, donc recommencer coûte une copie et aucun ré-import.
 
 La mise en page de référence est un téléphone de 430 × 932, et elle le reste : sur
 un bureau, les mêmes panneaux passent dans une colonne à côté du plateau au lieu
-d'être réempilés en autre chose. Le plateau prend tout le reste, ce qui est
+d'être réempilés en autre chose.
+
+**Aucun téléphone réel ne fait 932 de haut** — une barre d'URL coûte à elle seule
+une centaine de pixels, et un appareil de 360 × 600 en perd un tiers. Dans une
+colonne flex ordinaire, tout enfant se rétracte par défaut, et c'étaient les
+cases qui cédaient : `#cards` s'écrasait à dix pixels pendant que ses tuiles
+gardaient leurs soixante-treize et débordaient sous les boosters, voire hors de
+l'écran. Elles restaient dans le DOM avec une boîte de clic, donc rien n'avait
+l'air cassé et rien n'était cliquable. Rien au-dessus du plateau ne se rétracte
+plus, et sous 820 px de haut la pile se compacte — blocs de couleurs masqués,
+marges et tuiles resserrées — au lieu de voler sa place au plateau, qui garde un
+plancher de 190 px et cesse d'être carré. Le smoke le vérifie là où ça compte :
+au centre de la tuile, est-ce la tuile que le doigt touche, et ce point est-il à
+l'écran. Le plateau prend tout le reste, ce qui est
 l'intérêt d'un grand écran — un million de cellules obtient enfin les pixels pour
 être regardé. La caméra se moque de la forme : `Viewport.setArea` reçoit le
 rectangle que la zone de jeu occupe réellement, et la mise en page pousse la
