@@ -95,7 +95,7 @@ Les gros buffers circulent en **transfert** (`postMessage` + transfer list), pas
 | Valeurs réservées | `254 = VOID`, `255 = DEAD` |
 | Rendu pixels | 1 texture `r8unorm` + shader palette, `scaleMode: nearest` |
 | Physique | mathématique — parcours axial à pas fixe, aucun moteur physique |
-| Tir | canon sur le cadre, perpendiculaire à son bord, une voie pelée d'un coup |
+| Tir | canon sur le cadre, perpendiculaire à son bord, une morsure par voie |
 | Quantification | Median Cut déterministe par défaut, k-means Lab en option qualité |
 | Dithering | désactivé — les couleurs portent une signification mécanique |
 | Persistance | IndexedDB, save v6 versionnée, index dérivés non sauvegardés |
@@ -137,18 +137,24 @@ faisait seulement sauter plus de voies (1 sur 36 au niveau 0, 1 sur 137 au nivea
 intervalle semi-ouvert : les voies se pavent exactement, sans doublon ni oubli, et
 30, 60 ou 120 FPS sur le même temps simulé visitent les mêmes voies.
 
-**Rafale de ligne.** Une voie dont la surface expose la couleur du canon est pelée
-d'un coup, de la surface vers l'intérieur, jusqu'à l'obstacle ou l'épuisement des
-munitions. `SurfaceIndex.frontIndex()` donne la cellule exposée en une lecture,
-donc la rafale est O(blocs détruits) et rien ne balaye la voie. La règle
-fondamentale ne bouge pas : **une munition détruit au plus un bloc**, et la
-première couleur étrangère arrête la rafale sans jamais être détruite.
+**Morsure de ligne.** Une voie dont la surface expose la couleur du canon perd
+la cellule qui lui fait face — **une seule**, `BITE_DEPTH = 1`. Le canon lime le
+contour au passage au lieu de forer dedans : au-delà de quelques cellules par
+voie, le plateau cesse d'être rongé par les bords et se met à montrer de longues
+entailles droites en travers de l'image, ce qui n'est pas ce à quoi le rail doit
+ressembler. Le débit vient de franchir plus de voies — vitesse, canons, stock —
+jamais de mordre plus profond. `SurfaceIndex.frontIndex()` donne la cellule
+exposée en une lecture, donc rien ne balaye la voie. La règle fondamentale ne
+bouge pas : **une munition détruit au plus un bloc**, et la première couleur
+étrangère arrête la morsure sans jamais être détruite.
 
-**Découplage rafale / spectacle.** Une rafale détruit instantanément : une bille qui
-voyagerait *après* la disparition du pixel serait un mensonge visuel, donc il n'y a
-plus de projectiles mobiles. `BurstRenderer` dessine un **traceur** sur la voie pelée
-qui s'estompe, plus des étincelles échantillonnées par `VisualLODController`. Le
-budget graphique ne peut plus jamais retenir un tir.
+**Découplage morsure / spectacle.** Une morsure détruit instantanément : une bille
+qui voyagerait *après* la disparition du pixel serait un mensonge visuel, donc il
+n'y a plus de projectiles mobiles. `BurstRenderer` dessine des étincelles
+échantillonnées par `VisualLODController`, et un **traceur** sur la voie
+uniquement quand une morsure a emporté une vraie enfilade — au-delà de la
+profondeur de base, où il ferait double emploi avec l'étincelle. Le budget
+graphique ne peut plus jamais retenir un tir.
 
 **Reprise hors-ligne réelle.** L'absence n'est pas rejouée frame par frame : la
 production est intégrée analytiquement par couleur, la fraction résiduelle est

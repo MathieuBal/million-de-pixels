@@ -6,7 +6,7 @@ import { WORLD_HEIGHT, WORLD_WIDTH } from "../core/constants";
 import type { PixelWorld } from "../world/PixelWorld";
 import { VisualLODController } from "../rendering/VisualLODController";
 import { crossedLanes, PERIMETER } from "./Cannon";
-import { resolveLaneBurst, type BurstEvent } from "./LineBurst";
+import { BITE_DEPTH, resolveLaneBurst, type BurstEvent } from "./LineBurst";
 
 export interface ImpactEvent {
   x: number;
@@ -25,6 +25,12 @@ export interface CombatStats {
 
 export interface CombatOptions {
   maxActiveCannons?: number;
+  /**
+   * Cells a single lane crossing takes off. One by default: a cannon files the
+   * outline as it passes. Deeper bites cut visible straight gashes across the
+   * picture instead of eating it from its edges.
+   */
+  biteDepth?: number;
   /**
    * Cells around the last block of a burst also destroyed, of the same colour
    * only. Zero is the base game; it is the hook the effects system will drive,
@@ -100,6 +106,7 @@ export class CombatSimulator {
     this.lod = lod;
     this.options = {
       maxActiveCannons: options.maxActiveCannons ?? MAX_ACTIVE_CANNONS,
+      biteDepth: options.biteDepth ?? BITE_DEPTH,
       blastRadius: options.blastRadius ?? 0,
     };
   }
@@ -285,7 +292,7 @@ export class CombatSimulator {
     for (const aim of crossedLanes(from, travelled)) {
       this.stats.lanesExamined++;
 
-      const burst = resolveLaneBurst(this.world, cannon, aim);
+      const burst = resolveLaneBurst(this.world, cannon, aim, this.options.biteDepth);
       if (burst.destroyed === 0) continue;
 
       cannon.onBurst(burst.destroyed);
