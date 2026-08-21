@@ -2,12 +2,12 @@ import type { GameController } from "../app/GameController";
 import { UPGRADES, type UpgradeDefinition } from "../progression/Upgrades";
 import { formatCount } from "./format";
 
-/** Axes shown as shortcuts in the bottom row. The panel holds all six. */
+/** Axes shown as shortcuts in the bottom row — all four of them. */
 const BOOSTER_ROW: Array<UpgradeDefinition["id"]> = [
-  "cadence",
   "vitesse",
-  "explosion",
   "canons",
+  "munitions",
+  "cases",
 ];
 
 /**
@@ -15,8 +15,9 @@ const BOOSTER_ROW: Array<UpgradeDefinition["id"]> = [
  *
  * Fragments are destroyed pixels, so the image funds its own destruction and
  * every purchase is paid for by the progress it accelerates. The bottom row is
- * a shortcut onto the four cannon axes; the panel behind it carries all six,
- * including the two that widen the queue.
+ * a shortcut onto the four axes the panel carries: how fast the rail turns,
+ * how many cannons ride it, how much each one carries, and how wide the queue
+ * of offers is.
  */
 export class UpgradePanel {
   private readonly boosters = document.getElementById("boosters") as HTMLElement;

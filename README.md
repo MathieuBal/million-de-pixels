@@ -95,10 +95,10 @@ Les gros buffers circulent en **transfert** (`postMessage` + transfer list), pas
 | Valeurs réservées | `254 = VOID`, `255 = DEAD` |
 | Rendu pixels | 1 texture `r8unorm` + shader palette, `scaleMode: nearest` |
 | Physique | mathématique — parcours axial à pas fixe, aucun moteur physique |
-| Tir | canon sur le cadre, perpendiculaire à son bord, une seule voie par bille |
+| Tir | canon sur le cadre, perpendiculaire à son bord, une voie pelée d'un coup |
 | Quantification | Median Cut déterministe par défaut, k-means Lab en option qualité |
 | Dithering | désactivé — les couleurs portent une signification mécanique |
-| Persistance | IndexedDB, save v2 versionnée, index dérivés non sauvegardés |
+| Persistance | IndexedDB, save v5 versionnée, index dérivés non sauvegardés |
 | Image source | jamais persistée (seul le niveau quantifié l'est) |
 | PRNG | `xorshift32-v1`, versionné, jamais `Math.random()` |
 
@@ -123,60 +123,70 @@ un au hasard dans une couleur, est O(1). Rien ne parcourt jamais le million de
 cellules pour chercher une cible rouge.
 
 **Canon sur le cadre, tir sur une seule voie.** Le canon patrouille le bord de
-l'image et tire toujours perpendiculairement à son côté : chaque bille reste dans
+l'image et tire toujours perpendiculairement à son côté : une rafale reste dans
 une seule ligne ou une seule colonne. Le parcours se réduit alors à un balayage à
 pas fixe — l'index de cellule avance d'une constante (±1 sur une ligne, ±1024 sur
-une colonne), sans flottant ni terme incrémental dans la boucle. Le clip se réduit
-à borner la position de départ et d'arrivée.
+une colonne), sans flottant ni terme incrémental dans la boucle.
 
-**Le canon ne tire que devant une cible.** Une carte reste armée tant que le canon
-ne fait pas face à une voie contenant encore sa couleur. Répondre à « reste-t-il du
-rouge dans la ligne 412 ? » en balayant la voie coûterait 1024 lectures par
-vérification ; `LaneIndex` répond en une lecture et se met à jour en O(1) à chaque
-destruction, pour 64 KiB.
+**Le rail est l'horloge.** Chaque voie franchie est une occasion de traitement :
+le travail d'un canon vaut exactement la distance qu'il a parcourue. Il n'y a plus
+de cadence. Une cadence fixe plafonnait la production à `1000 / intervalle` quelle
+que soit la vitesse — l'amélioration « Vitesse » n'achetait alors aucun débit, elle
+faisait seulement sauter plus de voies (1 sur 36 au niveau 0, 1 sur 137 au niveau 8).
+`crossedLanes()` énumère les positions entières de `[from, from + distance)`, un
+intervalle semi-ouvert : les voies se pavent exactement, sans doublon ni oubli, et
+30, 60 ou 120 FPS sur le même temps simulé visitent les mêmes voies.
 
-**Deux régimes de simulation.** À faible puissance, un tir logique est un projectile
-simulé qui balaye sa voie. À forte puissance, la salve est convertie
-directement en commandes de destruction et seuls quelques centaines d'impacts
-représentatifs deviennent des VFX. C'est ce qui permet aux upgrades de continuer à
-monter bien après que le renderer a cessé de pouvoir dessiner chaque bille.
+**Rafale de ligne.** Une voie dont la surface expose la couleur du canon est pelée
+d'un coup, de la surface vers l'intérieur, jusqu'à l'obstacle ou l'épuisement des
+munitions. `SurfaceIndex.frontIndex()` donne la cellule exposée en une lecture,
+donc la rafale est O(blocs détruits) et rien ne balaye la voie. La règle
+fondamentale ne bouge pas : **une munition détruit au plus un bloc**, et la
+première couleur étrangère arrête la rafale sans jamais être détruite.
+
+**Découplage rafale / spectacle.** Une rafale détruit instantanément : une bille qui
+voyagerait *après* la disparition du pixel serait un mensonge visuel, donc il n'y a
+plus de projectiles mobiles. `BurstRenderer` dessine un **traceur** sur la voie pelée
+qui s'estompe, plus des étincelles échantillonnées par `VisualLODController`. Le
+budget graphique ne peut plus jamais retenir un tir.
 
 **Reprise hors-ligne réelle.** L'absence n'est pas rejouée frame par frame : la
 production est intégrée analytiquement par couleur, la fraction résiduelle est
 conservée d'une session à l'autre, et les hits résultants **suppriment de vrais
 pixels** via l'index. On revient sur une image rongée, pas sur une jauge.
 
-**La surface protège ce qu'il y a derrière.** Une bille s'arrête sur la première
-cellule pleine qu'elle rencontre, quelle qu'en soit la couleur : si c'est la sienne
-elle la détruit, sinon le tir est bloqué. Seuls les trous laissés par les tirs
-précédents et les marges transparentes se traversent.
+**La surface protège ce qu'il y a derrière.** Une rafale part de la première
+cellule pleine de la voie, quelle qu'en soit la couleur : si c'est la sienne elle
+la détruit et continue, sinon rien ne se passe. Seuls les trous laissés par les
+rafales précédentes et les marges transparentes se traversent.
 
 C'est ce qui donne du poids à la géométrie de l'image : ce qui est enterré est
 inatteignable d'un côté tant que la façade tient, et un canon doit parfois faire le
 tour du cadre — ou attendre qu'une autre couleur soit dégagée — avant d'avoir un tir.
 `SurfaceIndex` répond en une lecture à « quelle cellule me fait face ? », donc le
-canon retient son feu au lieu d'envoyer des billes dans un mur. Un canon qui boucle
-un tour complet sans tirer quitte le rail : sans ça une couleur totalement enterrée
-immobiliserait un slot à vie.
+canon ne dépense rien devant un mur. Un canon qui boucle un tour complet sans rien
+peler quitte le rail : sans ça une couleur totalement enterrée immobiliserait un
+slot à vie.
 
 ## Améliorations
 
-L'image finance sa propre destruction : un pixel détruit vaut un fragment. Six
-axes, en deux familles, achetés dans un panneau et appliqués immédiatement — y
-compris aux canons déjà sur le rail, sans quoi un achat semblerait sans effet.
+L'image finance sa propre destruction : un pixel détruit vaut un fragment. Quatre
+axes, achetés dans un panneau et appliqués immédiatement — y compris aux canons
+déjà sur le rail, sans quoi un achat semblerait sans effet.
 
-| Axe | Effet | Base |
-|---|---|---|
-| Cadence | intervalle entre deux billes | 140 ms |
-| Vitesse | déplacement sur le rail | 260 c/s |
-| Explosion | rayon d'impact, sur la couleur visée | 1 bloc |
-| Rail | canons simultanés | 5 |
-| Chargeur | billes par case | 40 |
-| Étal | cases proposées | 8 |
+| Axe | Effet | Base | Paliers |
+|---|---|---|---|
+| Vitesse | voies examinées par seconde | 260 | 15 × +8 % (×3,17) |
+| Rail | canons simultanés | 5 | |
+| Chargeur | munitions par case | 40 | |
+| Étal | cases proposées | 8 | |
 
-L'explosion est le seul axe qui élargit la règle fondamentale : au niveau zéro
-une bille détruit exactement un bloc, et l'amélioration seule y déroge — jamais
-au-delà de la couleur visée, sans quoi l'économie par couleur s'effondrerait.
+**Vitesse est l'axe de production.** Depuis que le rail est l'horloge, voies par
+seconde *est* le débit : 260 au niveau 0, 825 au niveau 15. Quinze paliers courts
+plutôt que huit longs, pour que le joueur sente souvent la voie tourner plus vite.
+
+`blastRadius` reste une option de `CombatSimulator` par défaut à zéro : c'est le
+point d'accroche du futur système d'effets, pas un axe achetable.
 
 La portée est le niveau : une nouvelle image repart des valeurs de base, et rien
 n'exige de méta-progression. **Tous les prix et paliers sont des valeurs
@@ -193,7 +203,21 @@ limité par le rasterizer, pas par la simulation) :
 | Impacts visuels/s | ~280 | ~880 (budget 900) |
 | Ratio logique : visuel | 1 : 1 | **1 : 35** |
 | Temps de simulation | 0,19 ms/frame | 0,36 ms/frame |
-| Projectiles simulés | ~95 | 0 (batché) |
+
+Occasions de tir par seconde, avant et après la suppression de la cadence :
+
+| Vitesse | Avant (cadence 140 ms) | Après (le rail est l'horloge) |
+|---|---:|---:|
+| niv. 0 — 260 c/s | 7,1 | **260** |
+| niv. 5 — 382 c/s | 7,1 | **382** |
+| niv. 10 — 561 c/s | 7,1 | **561** |
+| niv. 15 — 825 c/s | 7,1 | **825** |
+
+Le plafond réel s'est déplacé : ce n'est plus la cadence mais les **munitions**.
+Cinq canons de 40 coups vident leur stock en une poignée de voies dès que l'image
+présente des aplats, si bien que le débit se règle désormais sur Chargeur et Rail
+autant que sur Vitesse. C'est le bon problème à avoir — il est dans l'économie, pas
+dans une constante de boucle.
 
 Le budget de simulation visé est ≤ 4 ms/frame ; la boucle en consomme moins de 0,4 ms
 même à 35 000 impacts logiques par seconde. Ces chiffres restent des mesures sur une
@@ -226,7 +250,7 @@ mesures de débit ci-dessus.
 
 ## Ce qui reste ouvert
 
-Tous les chiffres de gameplay — cadence de tir, taille du deck, valeurs d'upgrade,
+Tous les chiffres de gameplay — vitesse du rail, taille du deck, valeurs d'upgrade,
 seuils de milestones, plafond hors-ligne — sont des **valeurs initiales de conception
 à mesurer et ajuster**, pas des spécifications. Le prototype existe précisément pour
 savoir combien de temps il est réellement agréable de regarder un million de pixels

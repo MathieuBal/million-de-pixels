@@ -265,10 +265,10 @@ export class GameScreen {
       ["p95 frame", `${profiler.p95FrameMs.toFixed(1)} ms`],
       ["Simulation", `${profiler.meanSimMs.toFixed(2)} ms`],
       ["Canons", formatCount(combatStats?.activeCannons ?? 0)],
-      ["Billes en vol", formatCount(combatStats?.activeProjectiles ?? 0)],
-      ["Tirs/s", formatCount(profiler.logicalImpactsPerSecond)],
+      ["Voies/frame", formatCount(combatStats?.lanesExamined ?? 0)],
+      ["Rafales/frame", formatCount(combatStats?.bursts ?? 0)],
+      ["Voies/s", formatCount(profiler.logicalImpactsPerSecond)],
       ["Blocs/s", formatCount(profiler.destroyedPerSecond)],
-      ["Tirs perdus", formatCount(combatStats?.misses ?? 0)],
       ["Zoom", `×${this.game.viewport.scale.toFixed(1)}`],
     ];
 
@@ -297,7 +297,7 @@ export class GameScreen {
         `<td><span class="swatch" style="background:${cssColor(palette.r, palette.g, palette.b)}"></span>#${entry.colorId}</td>` +
         `<td>${formatCount(entry.alive)}</td>` +
         `<td class="share">${formatPercent(entry.shareOfRemaining)}</td>` +
-        `<td class="dps">${formatPercent(entry.dpsShare)}</td>` +
+        `<td class="dps">${formatPercent(entry.outputShare)}</td>` +
         `<td>${formatCount(entry.rate)}</td>`;
       this.colorTableBody.appendChild(row);
     }

@@ -156,7 +156,7 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
-  check("le panneau liste les six axes", (await page.locator(".upgrade-row").count()) === 6);
+  check("le panneau liste les quatre axes", (await page.locator(".upgrade-row").count()) === 4);
 
   const balanceBefore = digits(await page.locator("#upgrade-balance").innerText());
   check("les pixels detruits financent les achats", balanceBefore > 0, `${balanceBefore} fragments`);
@@ -225,6 +225,21 @@ try {
   console.log(`        ${bought} ameliorations achetees · ${rateBefore} → ${rateAfter} blocs/s`);
 
   console.log("\n— persistance et hors-ligne —");
+  // Wait for the rail to go quiet, then for one autosave window on top of it.
+  // The save is throttled, so reading the live counter while blocks are still
+  // falling compares a live number against a snapshot taken up to ten seconds
+  // earlier — that used to pass only because destruction was thirty-six times
+  // slower, not because the two were ever equal.
+  let stable = 0;
+  let previous = -1;
+  while (stable < 5) {
+    const alive = digits(await page.locator("#alive-count").innerText());
+    stable = alive === previous ? stable + 1 : 0;
+    previous = alive;
+    await page.waitForTimeout(300);
+  }
+  await page.waitForTimeout(11000); // AUTOSAVE_INTERVAL_MS + margin
+
   const beforeReload = digits(await page.locator("#alive-count").innerText());
   await page.reload({ waitUntil: "networkidle" });
   await page.waitForSelector("#screen-game:not([hidden])", { timeout: 60000 });

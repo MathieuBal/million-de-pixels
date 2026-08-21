@@ -4,7 +4,7 @@ import { CannonLoadGenerator, DEFAULT_LOAD_AMMO } from "../../src/cannon/CannonL
 import { CannonQueue, VISIBLE_LOADS } from "../../src/cannon/CannonQueue";
 import { ColorAmmoReserve } from "../../src/cannon/ColorAmmoReserve";
 import { CombatSimulator, MAX_ACTIVE_CANNONS } from "../../src/combat/CombatSimulator";
-import { ProjectilePool } from "../../src/combat/ProjectilePool";
+import { aimAt, PERIMETER } from "../../src/combat/Cannon";
 import { PixelWorld } from "../../src/world/PixelWorld";
 import { XorShift32 } from "../../src/rng/XorShift32";
 import { VisualLODController } from "../../src/rendering/VisualLODController";
@@ -137,50 +137,52 @@ describe("CannonQueue", () => {
 });
 
 describe("ActiveCannon", () => {
-  it("holds fire until its cooldown elapses", () => {
+  it("reports the distance it covered, because that is its workload", () => {
+    // There is no cadence any more: every lane crossed is an opportunity, so
+    // what the simulator needs back from a move is how far it went.
     const cannon = new ActiveCannon({ id: "c", colorId: 0, ammo: 5 }, 0);
-    expect(cannon.canFire()).toBe(true);
-    cannon.onFired();
-    expect(cannon.canFire()).toBe(false);
-    cannon.update(200);
-    cannon.onHit();
-    expect(cannon.canFire()).toBe(true);
+    cannon.tune(300);
+    expect(cannon.update(1000)).toBeCloseTo(300, 6);
+    expect(cannon.trackPosition).toBeCloseTo(300, 6);
   });
 
-  it("never puts more balls in the air than it has rounds", () => {
-    const cannon = new ActiveCannon({ id: "c", colorId: 0, ammo: 2 }, 0);
-    cannon.onFired();
-    cannon.update(500);
-    cannon.onFired();
-    cannon.update(500);
-    expect(cannon.canFire()).toBe(false);
-  });
-
-  it("spends a round on a hit and none on a miss", () => {
+  it("spends one round per block a burst actually removed", () => {
     const cannon = new ActiveCannon({ id: "c", colorId: 0, ammo: 10 }, 0);
-    cannon.onFired();
-    cannon.onHit();
-    expect(cannon.ammo).toBe(9);
+    cannon.onBurst(3);
+    expect(cannon.ammo).toBe(7);
+    // A lane with nothing to peel costs nothing.
+    cannon.onBurst(0);
+    expect(cannon.ammo).toBe(7);
+  });
 
-    cannon.onFired();
-    cannon.onMiss();
-    expect(cannon.ammo).toBe(9);
+  it("never spends more rounds than it carries", () => {
+    const cannon = new ActiveCannon({ id: "c", colorId: 0, ammo: 2 }, 0);
+    cannon.onBurst(5);
+    expect(cannon.ammo).toBe(0);
   });
 
   it("leaves the rail once its stock is spent", () => {
     const cannon = new ActiveCannon({ id: "c", colorId: 0, ammo: 1 }, 0);
-    cannon.onFired();
     expect(cannon.isFinished()).toBe(false);
-    cannon.onHit();
+    cannon.onBurst(1);
+    expect(cannon.isFinished()).toBe(true);
+  });
+
+  it("leaves after a full lap that peeled nothing", () => {
+    // Its colour is buried behind another from every side: without this the
+    // cannon would orbit forever and hold a rail slot hostage.
+    const cannon = new ActiveCannon({ id: "c", colorId: 0, ammo: 30 }, 0);
+    cannon.tune(PERIMETER);
+    cannon.update(1100);
     expect(cannon.isFinished()).toBe(true);
   });
 
   it("ends its mission immediately when its colour is gone", () => {
     const cannon = new ActiveCannon({ id: "c", colorId: 0, ammo: 30 }, 0);
     cannon.retire();
-    expect(cannon.canFire()).toBe(false);
     expect(cannon.isFinished()).toBe(true);
   });
+
 
   it("round-trips through serialize", () => {
     const cannon = new ActiveCannon({ id: "c", colorId: 2, ammo: 17 }, 900);
@@ -227,19 +229,31 @@ describe("CombatSimulator", () => {
     expect(destroyed).toBeLessThanOrEqual(load.ammo);
   });
 
-  it("never destroys a pixel off the ball's trajectory", () => {
+  it("never destroys a pixel off the lanes a cannon crossed", () => {
     // The absolute criterion: no aggregate command, no random pick by colour.
+    //
+    // A frame's trajectory is now the whole arc a cannon covered, not the
+    // single position it landed on — that is exactly the change that turned
+    // speed into throughput — so the reference set has to be the arc too. Sixty
+    // frames keep the covered lanes well under the perimeter, or the assertion
+    // would pass on anything.
     const { world, combat, queue } = setup();
     for (let i = 0; i < 3; i++) combat.launch(queue.visible[0].id);
 
     const lanes = new Set<string>();
-    for (let frame = 0; frame < 600; frame++) {
+    for (let frame = 0; frame < 60; frame++) {
       for (const cannon of combat.activeCannons) {
-        const aim = cannon.aim();
-        lanes.add(`${aim.axis}:${aim.lane}`);
+        const travel = cannon.moveSpeed * 0.016;
+        for (let p = Math.floor(cannon.trackPosition); p <= cannon.trackPosition + travel + 1; p++) {
+          const aim = aimAt(p);
+          lanes.add(`${aim.axis}:${aim.lane}`);
+        }
       }
       combat.update(16, frame * 16);
     }
+
+    // The check is only worth anything while most of the rail is untouched.
+    expect(lanes.size).toBeLessThan(PERIMETER / 2);
 
     for (let i = 0; i < PIXEL_COUNT; i++) {
       if (world.colorId[i] !== DEAD) continue;
@@ -357,7 +371,10 @@ describe("CombatSimulator", () => {
 
     const load = queue.visible.find((l) => l.colorId === 0)!;
     const cannon = combat.launch(load.id)!;
-    cannon.moveSpeed = 0;
+    // Slow enough that sixty frames stay in the columns of pure colour 1, so
+    // the only lane that can ever match is column 0. A cannon at rest is not an
+    // option any more: with the rail as the clock, standing still is no work.
+    cannon.moveSpeed = 60;
     cannon.trackPosition = 0; // top of column 0
 
     run(combat, 60);
@@ -366,6 +383,8 @@ describe("CombatSimulator", () => {
     // Strip the four cells of colour 1 capping the column.
     for (let y = 0; y < 4; y++) world.destroy(y * WORLD_WIDTH);
 
+    // Bring it back round to column 0 and let it pass again.
+    cannon.trackPosition = 0;
     run(combat, 60);
     expect(world.aliveByColor(0)).toBeLessThan(counts[0]);
   });
@@ -440,39 +459,62 @@ describe("CombatSimulator", () => {
     expect(world.destroyedCount()).toBeLessThanOrEqual(load.ammo);
   });
 
+  it("destroys the same blocks at 30, 60 and 120 FPS", () => {
+    // The acceptance invariant of the whole refactor: the rail is the clock,
+    // so the same simulated time must do the same work however it is sliced.
+    // A cadence could never hold this — it counted frames, not distance.
+    const play = (frameMs: number, frames: number) => {
+      const { world, combat, queue } = setup(4, 7);
+      for (let i = 0; i < 3; i++) combat.launch(queue.visible[0].id);
+      for (let f = 0; f < frames; f++) combat.update(frameMs, f * frameMs);
+      return world.destroyedCount();
+    };
+
+    const at60 = play(1000 / 60, 120); // 2 s
+    expect(at60).toBeGreaterThan(0);
+    expect(play(1000 / 30, 60)).toBe(at60);
+    expect(play(1000 / 120, 240)).toBe(at60);
+  });
+
+  it("destroys more in the same time when the rail turns faster", () => {
+    const play = (moveSpeed: number) => {
+      const { world, combat, queue } = setup(4, 7);
+      for (let i = 0; i < 3; i++) combat.launch(queue.visible[0].id);
+      combat.tuneCannons(moveSpeed);
+      // A short window on purpose: three cannons carry a hundred and twenty
+      // rounds between them and a burst spends them fast, so a long run would
+      // measure the ammunition stock instead of the speed.
+      for (let f = 0; f < 10; f++) combat.update(16, f * 16);
+      return world.destroyedCount();
+    };
+
+    // Speed used to buy nothing at all: throughput was pinned at
+    // `1000 / fireIntervalMs` and going faster only skipped more lanes.
+    expect(play(760)).toBeGreaterThan(play(260));
+  });
+
+  it("keeps queued plus active within the living pixels for a whole run", () => {
+    const { world, combat, queue, reserve } = setup(4, 11);
+    for (let i = 0; i < MAX_ACTIVE_CANNONS; i++) {
+      const load = queue.visible[0];
+      if (load) combat.launch(load.id);
+    }
+
+    for (let frame = 0; frame < 400; frame++) {
+      combat.update(16, frame * 16);
+      queue.refill();
+      for (let colour = 0; colour < 4; colour++) {
+        const state = reserve.stateOf(colour);
+        expect(state.queuedAmmo + state.activeAmmo).toBeLessThanOrEqual(
+          world.aliveByColor(colour),
+        );
+      }
+    }
+  });
+
   it("does nothing at all with an empty rail", () => {
     const { world, combat } = setup();
     run(combat, 200);
     expect(world.destroyedCount()).toBe(0);
-  });
-});
-
-describe("ProjectilePool", () => {
-  const base = () => ({
-    cannonId: "c",
-    colorId: 0,
-    axis: "row" as const,
-    lane: 0,
-    direction: 1 as const,
-    position: 0,
-    speed: 100,
-  });
-
-  it("recycles slots instead of allocating", () => {
-    const pool = new ProjectilePool(4);
-    const spawned = [];
-    for (let i = 0; i < 4; i++) spawned.push(pool.spawn(base())!);
-    expect(pool.spawn(base())).toBeNull();
-
-    pool.release(spawned[0]);
-    expect(pool.spawn(base())).not.toBeNull();
-    expect(pool.activeCount).toBe(4);
-  });
-
-  it("survives a release during iteration", () => {
-    const pool = new ProjectilePool(8);
-    for (let i = 0; i < 8; i++) pool.spawn(base());
-    pool.forEachActive((p) => pool.release(p));
-    expect(pool.activeCount).toBe(0);
   });
 });

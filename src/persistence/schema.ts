@@ -5,7 +5,7 @@ import type { UpgradeLevels } from "../progression/Upgrades";
 import type { CannonState } from "../combat/Cannon";
 import type { RngAlgorithm } from "../rng/XorShift32";
 
-export const SAVE_SCHEMA_VERSION = 4;
+export const SAVE_SCHEMA_VERSION = 5;
 
 /** Cannon state before the cannon was constrained to the board's edges. */
 export interface OrbitalCannonStateV1 {
@@ -78,5 +78,26 @@ export interface LevelSaveV4 extends RailSaveBase {
   upgrades: { levels: UpgradeLevels; earned: number; spent: number };
 }
 
-export type CurrentLevelSave = LevelSaveV4;
-export type AnyLevelSave = LevelSaveV1 | LevelSaveV2 | LevelSaveV3 | LevelSaveV4;
+export interface LevelSaveV5 extends RailSaveBase {
+  schemaVersion: 5;
+  upgrades: { levels: UpgradeLevels; earned: number; spent: number };
+  /**
+   * Pixels per second measured per colour when the tab was left.
+   *
+   * The offline catch-up used to derive production from each cannon's fire
+   * interval. There is no fire interval any more — the rail is the clock, and
+   * what a cannon actually removes depends on how much of its colour the
+   * surface exposes. Nothing short of running the simulation predicts that, so
+   * the model uses what was observed rather than a formula that would be wrong
+   * in both directions.
+   */
+  observedRateByColor: number[];
+}
+
+export type CurrentLevelSave = LevelSaveV5;
+export type AnyLevelSave =
+  | LevelSaveV1
+  | LevelSaveV2
+  | LevelSaveV3
+  | LevelSaveV4
+  | LevelSaveV5;

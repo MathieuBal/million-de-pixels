@@ -12,8 +12,12 @@ export interface ColorStatEntry {
   shareOfInitial: number;
   /** Smoothed destruction rate, pixels per second. */
   rate: number;
-  /** Share of the deck's total damage output aimed here, in [0, 1]. */
-  dpsShare: number;
+  /**
+   * Share of the destruction actually happening that lands on this colour, in
+   * [0, 1]. Measured, not derived from any cadence: it is the observed rate
+   * over the sum of the observed rates.
+   */
+  outputShare: number;
   /** Seconds until this colour runs out at the current rate. Infinity if idle. */
   etaSeconds: number;
   exhausted: boolean;
@@ -51,9 +55,15 @@ export class ColorStats {
   private readonly initialCount: Uint32Array;
   private readonly previousAlive: Uint32Array;
   private readonly rate: Float64Array;
-  private readonly dps: Float64Array;
 
   private lastSampleMs = 0;
+  /**
+   * Explicit, because zero is a legitimate timestamp. Using `lastSampleMs === 0`
+   * as the sentinel meant a session that started its clock at zero threw away
+   * its second sample too, and the measured rates stayed flat one window longer
+   * than they should.
+   */
+  private hasSampled = false;
 
   constructor(private readonly world: PixelWorld) {
     this.paletteSize = world.paletteSize;
@@ -61,7 +71,6 @@ export class ColorStats {
     this.initialCount = new Uint32Array(this.paletteSize);
     this.previousAlive = new Uint32Array(this.paletteSize);
     this.rate = new Float64Array(this.paletteSize);
-    this.dps = new Float64Array(this.paletteSize);
 
     for (let colour = 0; colour < this.paletteSize; colour++) {
       // The palette count is the import-time total, so `destroyed` stays
@@ -76,14 +85,9 @@ export class ColorStats {
    * the palette, never the board — but throttled so the smoothing window stays
    * meaningful regardless of frame rate.
    */
-  sample(nowMs: number, damagePerSecondByColor?: ArrayLike<number>): void {
-    if (damagePerSecondByColor) {
-      for (let colour = 0; colour < this.paletteSize; colour++) {
-        this.dps[colour] = damagePerSecondByColor[colour] ?? 0;
-      }
-    }
-
-    if (this.lastSampleMs === 0) {
+  sample(nowMs: number): void {
+    if (!this.hasSampled) {
+      this.hasSampled = true;
       this.lastSampleMs = nowMs;
       return;
     }
@@ -107,7 +111,7 @@ export class ColorStats {
     const alive = this.world.aliveByColor(colour);
     const initial = this.initialCount[colour];
     const totalAlive = this.world.aliveTotal();
-    const totalDps = this.totalDps();
+    const totalRate = this.totalRate();
     const rate = this.rate[colour];
 
     return {
@@ -118,7 +122,7 @@ export class ColorStats {
       shareOfRemaining: totalAlive === 0 ? 0 : alive / totalAlive,
       shareOfInitial: this.world.playablePixels === 0 ? 0 : initial / this.world.playablePixels,
       rate,
-      dpsShare: totalDps === 0 ? 0 : this.dps[colour] / totalDps,
+      outputShare: totalRate === 0 ? 0 : rate / totalRate,
       etaSeconds: rate <= 0 ? Number.POSITIVE_INFINITY : alive / rate,
       exhausted: alive === 0,
     };
@@ -130,15 +134,22 @@ export class ColorStats {
     return out;
   }
 
-  totalDps(): number {
+  /** A copy of the measured per-colour rates, for the offline model to carry. */
+  ratesByColor(): number[] {
+    return Array.from(this.rate);
+  }
+
+  /** Pixels destroyed per second across the whole board, as measured. */
+  totalRate(): number {
     let total = 0;
-    for (let colour = 0; colour < this.paletteSize; colour++) total += this.dps[colour];
+    for (let colour = 0; colour < this.paletteSize; colour++) total += this.rate[colour];
     return total;
   }
 
   /**
-   * Colours that make up a bigger share of what is left than of the deck's
-   * output. These are what the run is actually waiting on.
+   * Colours that make up a bigger share of what is left than of the
+   * destruction actually happening. These are what the run is waiting on —
+   * either nothing is shooting at them, or something is standing in front.
    */
   bottlenecks(): Imbalance[] {
     return this.imbalances().filter((entry) => entry.gap > 0);
@@ -159,7 +170,7 @@ export class ColorStats {
     const out: Imbalance[] = [];
     for (const entry of this.entries()) {
       if (entry.alive === 0) continue;
-      const gap = entry.shareOfRemaining - entry.dpsShare;
+      const gap = entry.shareOfRemaining - entry.outputShare;
       if (Math.abs(gap) < IMBALANCE_THRESHOLD) continue;
       out.push({ colorId: entry.colorId, gap });
     }
