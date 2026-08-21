@@ -1,4 +1,4 @@
-import { ActiveCannon, FINALE_MOVE_SPEED } from "../cannon/ActiveCannon";
+import { ActiveCannon, CANNON_MOVE_SPEED, FINALE_MOVE_SPEED } from "../cannon/ActiveCannon";
 import type { CannonLoad } from "../cannon/CannonLoad";
 import type { CannonQueue } from "../cannon/CannonQueue";
 import type { ColorAmmoReserve } from "../cannon/ColorAmmoReserve";
@@ -25,6 +25,8 @@ export interface CombatStats {
 
 export interface CombatOptions {
   maxActiveCannons?: number;
+  /** Rail speed handed to every cannon, including the ones not launched yet. */
+  moveSpeed?: number;
   /**
    * Cells a single lane crossing takes off. One by default: a cannon files the
    * outline as it passes. Deeper bites cut visible straight gashes across the
@@ -106,6 +108,7 @@ export class CombatSimulator {
     this.lod = lod;
     this.options = {
       maxActiveCannons: options.maxActiveCannons ?? MAX_ACTIVE_CANNONS,
+      moveSpeed: options.moveSpeed ?? CANNON_MOVE_SPEED,
       biteDepth: options.biteDepth ?? BITE_DEPTH,
       blastRadius: options.blastRadius ?? 0,
     };
@@ -128,8 +131,16 @@ export class CombatSimulator {
     this.options.blastRadius = Math.max(0, Math.round(radius));
   }
 
-  /** Pushes bought upgrades onto the cannons already travelling. */
+  /**
+   * Sets the rail speed, now and for every cannon launched afterwards.
+   *
+   * Tuning only what is already travelling was a real bug: a bought speed
+   * level reached the cannons on the rail and then every replacement spawned
+   * back at the base speed, so the upgrade silently faded as the rail turned
+   * over. The speed belongs to the rail, not to the cannons on it.
+   */
   tuneCannons(moveSpeed: number): void {
+    this.options.moveSpeed = moveSpeed;
     for (const cannon of this.cannons) {
       if (!cannon.unlimited) cannon.tune(moveSpeed);
     }
@@ -212,7 +223,9 @@ export class CombatSimulator {
 
     // New cannons enter opposite the busiest stretch of rail, so they spread
     // out instead of stacking on top of each other.
-    const cannon = new ActiveCannon(load, this.nextEntryPosition());
+    const cannon = new ActiveCannon(load, this.nextEntryPosition(), {
+      moveSpeed: this.options.moveSpeed,
+    });
     this.cannons.push(cannon);
     return cannon;
   }
