@@ -79,6 +79,17 @@ export class ActiveCannon {
   }
 
   /**
+   * Applies bought upgrades. It has to reach cannons already travelling, not
+   * only the next ones: an upgrade the player cannot see take effect reads as
+   * a purchase that did nothing.
+   */
+  tune(fireIntervalMs: number, moveSpeed: number): void {
+    this.fireIntervalMs = fireIntervalMs;
+    this.moveSpeed = moveSpeed;
+    if (this.fireCooldownMs > fireIntervalMs) this.fireCooldownMs = fireIntervalMs;
+  }
+
+  /**
    * Ready to put a ball in the air. Note this says nothing about whether there
    * is anything to hit — that check belongs to the simulator, which owns the
    * surface index, and is what stops a cannon firing at a colour it cannot

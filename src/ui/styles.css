@@ -602,3 +602,76 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ------------------------------------------------------- améliorations */
+
+.booster[data-affordable="true"] { border-color: rgba(232, 161, 60, 0.4); }
+.booster .level {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--muted-3);
+}
+
+.upgrade-panel { position: absolute; inset: 0; display: flex; align-items: flex-end; }
+.upgrade-panel[hidden] { display: none; }
+.upgrade-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(11, 11, 14, 0.55), rgba(11, 11, 14, 0.96) 42%);
+}
+.upgrade-body {
+  position: relative;
+  margin: 0 var(--screen-pad) 22px;
+  width: calc(100% - var(--screen-pad) * 2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px 20px;
+}
+.upgrade-head { display: flex; justify-content: space-between; align-items: baseline; }
+.upgrade-head .title { font-size: 15px; font-weight: 500; }
+.upgrade-head .balance {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.upgrade-head .balance i { width: 10px; height: 10px; border-radius: 2px; background: var(--accent); }
+
+.upgrade-rows { display: flex; flex-direction: column; gap: 12px; }
+.upgrade-row { display: flex; align-items: center; gap: 12px; }
+.upgrade-row .chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--raise-2);
+  border: 1px solid var(--line-2);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  flex: none;
+}
+.upgrade-row .text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.upgrade-row .name { font-size: 13px; color: var(--text-2); }
+.upgrade-row .meta { font-family: var(--mono); font-size: 10.5px; color: var(--muted-2); }
+.upgrade-row .price {
+  padding: 7px 11px;
+  border: 0;
+  border-radius: 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-ink);
+  transition: filter 120ms ease-out, transform 120ms ease-out;
+}
+.upgrade-row .price:hover:not(:disabled) { filter: brightness(1.08); }
+.upgrade-row .price:active:not(:disabled) { transform: scale(0.98); }
+.upgrade-row .price:disabled { background: #202028; color: var(--muted-2); cursor: not-allowed; }

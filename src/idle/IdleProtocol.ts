@@ -57,3 +57,9 @@ export type IdleWorkerResponse = IdleResultResponse | IdleErrorResponse;
 
 /** Default cap on an absence. Economy decision, deliberately left tunable. */
 export const DEFAULT_MAX_OFFLINE_MS = 8 * 60 * 60 * 1000;
+
+/**
+ * Below this, the catch-up still runs but nothing is announced. Reloading the
+ * page is not an absence, and a panel reading "Absence 0 min" is noise.
+ */
+export const OFFLINE_REPORT_THRESHOLD_MS = 2 * 60 * 1000;

@@ -34,6 +34,7 @@ via une texture → faire orbiter un canon → détruire les bonnes couleurs →
 | Throttling des uploads | fait |
 | Canon patrouillant le cadre | fait |
 | Caméra : zoom molette/pincement, pan, vue d'ensemble | fait |
+| Améliorations : 6 axes, panneau, économie en pixels détruits | fait |
 | Habillage jeu portrait 430×932 (3 écrans) | fait |
 | Parcours ligne/colonne à pas fixe | fait |
 | Collision couleur + pierce/ricochet | fait |
@@ -157,6 +158,29 @@ tour du cadre — ou attendre qu'une autre couleur soit dégagée — avant d'av
 canon retient son feu au lieu d'envoyer des billes dans un mur. Un canon qui boucle
 un tour complet sans tirer quitte le rail : sans ça une couleur totalement enterrée
 immobiliserait un slot à vie.
+
+## Améliorations
+
+L'image finance sa propre destruction : un pixel détruit vaut un fragment. Six
+axes, en deux familles, achetés dans un panneau et appliqués immédiatement — y
+compris aux canons déjà sur le rail, sans quoi un achat semblerait sans effet.
+
+| Axe | Effet | Base |
+|---|---|---|
+| Cadence | intervalle entre deux billes | 140 ms |
+| Vitesse | déplacement sur le rail | 260 c/s |
+| Explosion | rayon d'impact, sur la couleur visée | 1 bloc |
+| Rail | canons simultanés | 5 |
+| Chargeur | billes par case | 40 |
+| Étal | cases proposées | 8 |
+
+L'explosion est le seul axe qui élargit la règle fondamentale : au niveau zéro
+une bille détruit exactement un bloc, et l'amélioration seule y déroge — jamais
+au-delà de la couleur visée, sans quoi l'économie par couleur s'effondrerait.
+
+La portée est le niveau : une nouvelle image repart des valeurs de base, et rien
+n'exige de méta-progression. **Tous les prix et paliers sont des valeurs
+d'ouverture à équilibrer.**
 
 ## Mesures
 

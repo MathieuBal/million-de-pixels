@@ -140,11 +140,89 @@ try {
   await page.waitForTimeout(150);
   check("la vue d'ensemble recadre", (await page.locator("#zoom-level").innerText()) !== zoomIn);
 
-  await page.locator("#pause").click();
-  await page.waitForTimeout(150);
+  // The debug panel has its own shortcut; the pause button opens the upgrades.
+  await page.keyboard.press("Alt+d");
+  await page.waitForTimeout(600);
   const perf = await perfPanel(page);
   table(perf);
   check("la simulation reste sous 4 ms/frame", parseFloat(perf["Simulation"]) < 4, perf["Simulation"]);
+  await page.keyboard.press("Alt+d");
+  await page.waitForTimeout(100);
+
+  console.log("\n— ameliorations —");
+  // Bank fragments first: the shop is funded by destruction, so it needs the
+  // rail to have actually been working.
+  await page.waitForTimeout(12000);
+
+  await page.locator("#pause").click();
+  await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
+  check("le panneau liste les six axes", (await page.locator(".upgrade-row").count()) === 6);
+
+  const balanceBefore = digits(await page.locator("#upgrade-balance").innerText());
+  check("les pixels detruits financent les achats", balanceBefore > 0, `${balanceBefore} fragments`);
+
+  const cheapest = Math.min(
+    ...(await page.locator(".upgrade-row .price").allInnerTexts())
+      .map(digits)
+      .filter((n) => n > 0),
+  );
+  check(
+    "la premiere amelioration est atteignable",
+    balanceBefore >= cheapest,
+    `${balanceBefore} fragments pour ${cheapest} demandes`,
+  );
+
+  const affordable = page.locator(".upgrade-row .price:not([disabled])").first();
+  if ((await affordable.count()) > 0) {
+    const price = digits(await affordable.innerText());
+    await affordable.click();
+    await page.waitForTimeout(200);
+    const balanceAfter = digits(await page.locator("#upgrade-balance").innerText());
+    // Fragments keep coming in while the rail works, so the balance can only be
+    // bounded, never predicted exactly.
+    check(
+      "un achat debite le solde",
+      balanceAfter < balanceBefore && balanceAfter >= balanceBefore - price,
+      `${balanceBefore} − ${price} → ${balanceAfter}`,
+    );
+  } else {
+    check("un achat debite le solde", false, "aucune amelioration abordable");
+  }
+
+  // Does buying actually move the game? Measured, not assumed.
+  await page.keyboard.press("Alt+d");
+  await page.waitForTimeout(600);
+  const rateBefore = digits((await perfPanel(page))["Blocs/s"]);
+  await page.keyboard.press("Alt+d");
+
+  let bought = 0;
+  for (let i = 0; i < 12; i++) {
+    const next = page.locator(".upgrade-row .price:not([disabled])").first();
+    if ((await next.count()) === 0) break;
+    await next.click();
+    bought++;
+    await page.waitForTimeout(120);
+  }
+
+  await page.locator("#upgrade-close").click();
+  await page.waitForTimeout(200);
+  check("le panneau se referme", await page.locator("#upgrade-panel").isHidden());
+
+  // Refill the rail: cannons spend their stock and leave, so an idle rail would
+  // measure nothing at all.
+  for (let i = 0; i < 8; i++) {
+    const card = page.locator("#cards button:not([disabled])").first();
+    if ((await card.count()) === 0) break;
+    await card.click();
+    await page.waitForTimeout(100);
+  }
+
+  await page.waitForTimeout(6000);
+  await page.keyboard.press("Alt+d");
+  await page.waitForTimeout(600);
+  const rateAfter = digits((await perfPanel(page))["Blocs/s"]);
+  await page.keyboard.press("Alt+d");
+  console.log(`        ${bought} ameliorations achetees · ${rateBefore} → ${rateAfter} blocs/s`);
 
   console.log("\n— persistance et hors-ligne —");
   const beforeReload = digits(await page.locator("#alive-count").innerText());
@@ -156,6 +234,16 @@ try {
     afterReload > 0 && afterReload <= beforeReload,
     `${beforeReload} → ${afterReload}`,
   );
+
+  await page.locator("#pause").click();
+  await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
+  const levels = await page.locator(".upgrade-row .name").allInnerTexts();
+  check(
+    "les ameliorations survivent au rechargement",
+    levels.some((text) => !text.includes("niv. 0")),
+    levels.filter((t) => !t.includes("niv. 0")).join(", ") || "toutes a zero",
+  );
+
 
   check("aucune erreur console", errors.length === 0, errors.join(" | "));
 

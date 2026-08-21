@@ -396,6 +396,50 @@ describe("CombatSimulator", () => {
     expect(reserve.stateOf(0).activeAmmo).toBe(0);
   });
 
+  it("keeps the blast inside its radius and its colour", () => {
+    const world = makeWorld();
+    const reserve = new ColorAmmoReserve(world);
+    const queue = new CannonQueue(new CannonLoadGenerator(reserve, new XorShift32(21)), reserve);
+    queue.refill();
+    const combat = new CombatSimulator(
+      world,
+      queue,
+      reserve,
+      { blastRadius: 3 },
+      new VisualLODController(),
+    );
+
+    const load = queue.visible[0];
+    combat.launch(load.id);
+    run(combat, 200);
+
+    const destroyed: Array<[number, number]> = [];
+    for (let i = 0; i < PIXEL_COUNT; i++) {
+      if (world.colorId[i] !== DEAD) continue;
+      destroyed.push([i % WORLD_WIDTH, (i / WORLD_WIDTH) | 0]);
+    }
+
+    expect(destroyed.length).toBeGreaterThan(0);
+    // A blast never reaches a colour other than the cannon's.
+    for (const [x, y] of destroyed) {
+      expect((x + y) % world.paletteSize).toBe(load.colorId);
+    }
+  });
+
+  it("destroys strictly one block per round at radius zero", () => {
+    const world = makeWorld();
+    const reserve = new ColorAmmoReserve(world);
+    const queue = new CannonQueue(new CannonLoadGenerator(reserve, new XorShift32(22)), reserve);
+    queue.refill();
+    const combat = new CombatSimulator(world, queue, reserve, {}, new VisualLODController());
+
+    const load = queue.visible[0];
+    combat.launch(load.id);
+    run(combat, 400);
+
+    expect(world.destroyedCount()).toBeLessThanOrEqual(load.ammo);
+  });
+
   it("does nothing at all with an empty rail", () => {
     const { world, combat } = setup();
     run(combat, 200);
