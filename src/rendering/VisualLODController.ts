@@ -12,21 +12,17 @@
 export interface LODBudget {
   /** Max effects spawned per second. */
   maxVfxPerSecond: number;
-  /** Max simulated (individually stepped) projectiles. */
-  maxSimulatedProjectiles: number;
   /** Board texture uploads per second. */
   textureUploadHz: number;
 }
 
 export const DESKTOP_BUDGET: LODBudget = {
   maxVfxPerSecond: 900,
-  maxSimulatedProjectiles: 900,
   textureUploadHz: 30,
 };
 
 export const MOBILE_BUDGET: LODBudget = {
   maxVfxPerSecond: 300,
-  maxSimulatedProjectiles: 300,
   textureUploadHz: 18,
 };
 
@@ -86,10 +82,5 @@ export class VisualLODController {
     const granted = Math.min(eligible, remaining);
     this.vfxThisWindow += granted;
     return granted;
-  }
-
-  /** True while individual projectiles are still cheap enough to simulate. */
-  canSimulateExactly(activeProjectiles: number): boolean {
-    return activeProjectiles < this.budget.maxSimulatedProjectiles;
   }
 }

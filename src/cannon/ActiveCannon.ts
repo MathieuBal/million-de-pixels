@@ -9,13 +9,13 @@ export interface ActiveCannonState {
   maxAmmo: number;
   trackPosition: number;
   moveSpeed: number;
-  fireIntervalMs: number;
-  fireCooldownMs: number;
 }
 
-/** Opening values, to test rather than to treat as balance. */
+/**
+ * Cells travelled per second — and, since every lane crossed is an opportunity,
+ * lanes examined per second too. This is the production stat.
+ */
 export const CANNON_MOVE_SPEED = 260;
-export const CANNON_FIRE_INTERVAL_MS = 140;
 
 /**
  * A cannon actually on the rail.
@@ -24,9 +24,8 @@ export const CANNON_FIRE_INTERVAL_MS = 140;
  * and leaves once the stock is gone. There is no permanent cannon any more:
  * every cannon on screen came from a slot the player chose to spend.
  *
- * `ammo` counts rounds still to be *spent*, and a round is only spent when a
- * block actually dies. `inFlight` holds back firing so a cannon with three
- * rounds left cannot put five balls in the air.
+ * `ammo` counts rounds still to be spent, and a round is only ever spent on a
+ * block that actually dies — a burst that finds nothing costs nothing.
  */
 export class ActiveCannon {
   readonly id: string;
@@ -36,20 +35,15 @@ export class ActiveCannon {
   ammo: number;
   trackPosition: number;
   moveSpeed: number;
-  fireIntervalMs: number;
-  fireCooldownMs = 0;
-
-  /** Balls of this cannon still travelling. */
-  inFlight = 0;
 
   /**
-   * Rail distance covered since the last shot left. A ball stops at the first
-   * solid cell, so a colour buried behind another is unreachable from every
-   * side; without this a cannon for such a colour would orbit forever and hold
-   * a rail slot hostage. A full lap with nothing to shoot means there is
-   * nothing to shoot.
+   * Rail distance covered since the last burst that removed something. A burst
+   * stops at the first solid cell, so a colour buried behind another is
+   * unreachable from every side; without this a cannon for such a colour would
+   * orbit forever and hold a rail slot hostage. A full lap with nothing to peel
+   * means there is nothing to peel.
    */
-  private distanceSinceShot = 0;
+  private distanceSinceBurst = 0;
 
   /** Set when the colour ran out under it: the mission ends immediately. */
   private retired = false;
@@ -61,17 +55,20 @@ export class ActiveCannon {
     this.ammo = state?.ammo ?? load.ammo;
     this.trackPosition = state?.trackPosition ?? trackPosition;
     this.moveSpeed = state?.moveSpeed ?? CANNON_MOVE_SPEED;
-    this.fireIntervalMs = state?.fireIntervalMs ?? CANNON_FIRE_INTERVAL_MS;
-    this.fireCooldownMs = state?.fireCooldownMs ?? 0;
   }
 
-  update(deltaMs: number): void {
+  /**
+   * Advances along the rail and reports how far it went, so the simulator can
+   * walk every lane crossed rather than only the one it landed on.
+   */
+  update(deltaMs: number): number {
     const travelled = this.moveSpeed * (deltaMs / 1000);
     this.trackPosition = (this.trackPosition + travelled) % PERIMETER;
-    if (this.fireCooldownMs > 0) this.fireCooldownMs -= deltaMs;
 
-    this.distanceSinceShot += travelled;
-    if (this.distanceSinceShot > PERIMETER && this.inFlight === 0) this.retire();
+    this.distanceSinceBurst += travelled;
+    if (this.distanceSinceBurst > PERIMETER) this.retire();
+
+    return travelled;
   }
 
   aim(): CannonAim {
@@ -83,37 +80,15 @@ export class ActiveCannon {
    * only the next ones: an upgrade the player cannot see take effect reads as
    * a purchase that did nothing.
    */
-  tune(fireIntervalMs: number, moveSpeed: number): void {
-    this.fireIntervalMs = fireIntervalMs;
+  tune(moveSpeed: number): void {
     this.moveSpeed = moveSpeed;
-    if (this.fireCooldownMs > fireIntervalMs) this.fireCooldownMs = fireIntervalMs;
   }
 
-  /**
-   * Ready to put a ball in the air. Note this says nothing about whether there
-   * is anything to hit — that check belongs to the simulator, which owns the
-   * surface index, and is what stops a cannon firing at a colour it cannot
-   * reach.
-   */
-  canFire(): boolean {
-    return !this.retired && this.fireCooldownMs <= 0 && this.inFlight < this.ammo;
-  }
-
-  onFired(): void {
-    this.fireCooldownMs = this.fireIntervalMs;
-    this.inFlight++;
-    this.distanceSinceShot = 0;
-  }
-
-  /** A ball found its target: the round is spent. */
-  onHit(): void {
-    this.inFlight = Math.max(0, this.inFlight - 1);
-    this.ammo = Math.max(0, this.ammo - 1);
-  }
-
-  /** A ball crossed the whole lane without finding anything. No round spent. */
-  onMiss(): void {
-    this.inFlight = Math.max(0, this.inFlight - 1);
+  /** Spends what a burst removed, and resets the idle-lap counter. */
+  onBurst(destroyed: number): void {
+    if (destroyed <= 0) return;
+    this.ammo = Math.max(0, this.ammo - destroyed);
+    this.distanceSinceBurst = 0;
   }
 
   /** Ends the mission now, whatever is left — its colour is gone. */
@@ -127,7 +102,7 @@ export class ActiveCannon {
 
   /** Off the rail once the stock is spent, or the colour disappeared. */
   isFinished(): boolean {
-    return (this.retired && this.inFlight === 0) || (this.ammo === 0 && this.inFlight === 0);
+    return this.retired || this.ammo === 0;
   }
 
   serialize(): ActiveCannonState {
@@ -138,8 +113,6 @@ export class ActiveCannon {
       maxAmmo: this.maxAmmo,
       trackPosition: this.trackPosition,
       moveSpeed: this.moveSpeed,
-      fireIntervalMs: this.fireIntervalMs,
-      fireCooldownMs: this.fireCooldownMs,
     };
   }
 

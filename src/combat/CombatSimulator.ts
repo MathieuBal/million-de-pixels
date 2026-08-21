@@ -2,11 +2,11 @@ import { ActiveCannon } from "../cannon/ActiveCannon";
 import type { CannonLoad } from "../cannon/CannonLoad";
 import type { CannonQueue } from "../cannon/CannonQueue";
 import type { ColorAmmoReserve } from "../cannon/ColorAmmoReserve";
-import { DEAD, VOID, WORLD_HEIGHT, WORLD_WIDTH } from "../core/constants";
+import { WORLD_HEIGHT, WORLD_WIDTH } from "../core/constants";
 import type { PixelWorld } from "../world/PixelWorld";
 import { VisualLODController } from "../rendering/VisualLODController";
-import { axisLength, traverseAxis } from "./axisTraversal";
-import { ProjectilePool, type Projectile } from "./ProjectilePool";
+import { crossedLanes } from "./Cannon";
+import { resolveLaneBurst, type BurstEvent } from "./LineBurst";
 
 export interface ImpactEvent {
   x: number;
@@ -16,63 +16,66 @@ export interface ImpactEvent {
 
 export interface CombatStats {
   activeCannons: number;
-  activeProjectiles: number;
-  shotsFired: number;
+  /** Lanes examined this frame — the rail's real workload. */
+  lanesExamined: number;
+  /** Lanes that matched and were peeled. */
+  bursts: number;
   destroyed: number;
-  cellsTraversed: number;
-  /** Shots stopped by another colour, or that ran off the far edge. */
-  misses: number;
 }
 
 export interface CombatOptions {
   maxActiveCannons?: number;
-  /** Ball speed in cells per second. */
-  projectileSpeed?: number;
-  /** Cells around the impact also destroyed, of the same colour only. */
+  /**
+   * Cells around the last block of a burst also destroyed, of the same colour
+   * only. Zero is the base game; it is the hook the effects system will drive,
+   * not a purchasable axis.
+   */
   blastRadius?: number;
 }
 
 /** Opening value, to test rather than to treat as balance. */
 export const MAX_ACTIVE_CANNONS = 5;
-const PROJECTILE_SPEED = 1400;
 
 /**
  * Drives the cannons currently on the rail.
  *
- * The rule the whole design rests on: **one ball destroys at most one block**.
- * A ball travels its lane and stops at the first solid cell it meets, whatever
- * its colour. If that cell is the cannon's colour it dies; otherwise the shot
- * is blocked and nothing happens. Holes left by earlier hits, and the
- * transparent margins, are the only things a ball passes through.
+ * **The rail is the clock.** Every lane a cannon crosses is an opportunity, so
+ * the work a cannon does is exactly the distance it covered — and speed is the
+ * production stat. There is no cadence: a fixed shot interval capped output at
+ * `1000 / interval` whatever the speed, which made the speed upgrade buy
+ * nothing but skipped lanes.
+ *
+ * The rule the whole design rests on is unchanged: **one round destroys at most
+ * one block**. A lane is peeled from the surface inwards while the exposed cell
+ * is the cannon's colour and rounds remain; the first foreign colour stops the
+ * burst and is never destroyed.
  *
  * That makes the image's own layering matter: what is behind the front is
  * unreachable from that side until the front is gone, so a cannon may have to
  * come round to another edge — or wait for another colour to be cleared —
- * before it has a shot. Nothing is ever destroyed off the ball's trajectory:
- * no aggregate command, no random pick by colour. `destroyRandomOfColor` has
- * no business in live combat; it stays for the offline catch-up, where nobody
- * is watching the shots.
+ * before it has a shot. Nothing is ever destroyed off the lane: no aggregate
+ * command, no random pick by colour. `destroyRandomOfColor` has no business in
+ * live combat; it stays for the offline catch-up, where nobody is watching.
  *
- * A round is only spent on a hit, and a cannon only fires when the cell facing
- * it is its own colour, so a stock of forty is forty blocks.
+ * A round is only spent on a block that actually dies, so a stock of forty is
+ * forty blocks.
  */
 export class CombatSimulator {
-  readonly pool = new ProjectilePool(512);
   readonly lod: VisualLODController;
 
   /** Impacts to draw this frame. Consumed by the renderer. */
   readonly visibleImpacts: ImpactEvent[] = [];
+  /** Bursts resolved this frame, for the tracer and the future effects. */
+  readonly bursts: BurstEvent[] = [];
 
   private readonly cannons: ActiveCannon[] = [];
   private readonly options: Required<CombatOptions>;
 
   private stats: CombatStats = {
     activeCannons: 0,
-    activeProjectiles: 0,
-    shotsFired: 0,
+    lanesExamined: 0,
+    bursts: 0,
     destroyed: 0,
-    cellsTraversed: 0,
-    misses: 0,
   };
 
   constructor(
@@ -85,7 +88,6 @@ export class CombatSimulator {
     this.lod = lod;
     this.options = {
       maxActiveCannons: options.maxActiveCannons ?? MAX_ACTIVE_CANNONS,
-      projectileSpeed: options.projectileSpeed ?? PROJECTILE_SPEED,
       blastRadius: options.blastRadius ?? 0,
     };
   }
@@ -108,8 +110,8 @@ export class CombatSimulator {
   }
 
   /** Pushes bought upgrades onto the cannons already travelling. */
-  tuneCannons(fireIntervalMs: number, moveSpeed: number): void {
-    for (const cannon of this.cannons) cannon.tune(fireIntervalMs, moveSpeed);
+  tuneCannons(moveSpeed: number): void {
+    for (const cannon of this.cannons) cannon.tune(moveSpeed);
   }
 
   get hasFreeSlot(): boolean {
@@ -120,36 +122,16 @@ export class CombatSimulator {
     return this.options.maxActiveCannons;
   }
 
-  /**
-   * Shots per second aimed at each colour by the rail as it stands.
-   *
-   * This is what replaces the old deck-wide DPS: effort is now whatever the
-   * player chose to send in, so the column that shows it beside the pixels
-   * remaining is a readout of their own decisions.
-   */
-  shotsPerSecondByColor(paletteSize: number): number[] {
-    const rate = new Array<number>(paletteSize).fill(0);
-    for (const cannon of this.cannons) {
-      if (cannon.colorId >= paletteSize || cannon.isRetired) continue;
-      rate[cannon.colorId] += 1000 / Math.max(1, cannon.fireIntervalMs);
-    }
-    return rate;
-  }
-
   getStats(): CombatStats {
-    return {
-      ...this.stats,
-      activeCannons: this.cannons.length,
-      activeProjectiles: this.pool.activeCount,
-    };
+    return { ...this.stats, activeCannons: this.cannons.length };
   }
 
   private resetFrameStats(): void {
-    this.stats.shotsFired = 0;
+    this.stats.lanesExamined = 0;
+    this.stats.bursts = 0;
     this.stats.destroyed = 0;
-    this.stats.cellsTraversed = 0;
-    this.stats.misses = 0;
     this.visibleImpacts.length = 0;
+    this.bursts.length = 0;
   }
 
   /**
@@ -169,13 +151,15 @@ export class CombatSimulator {
     return cannon;
   }
 
-  /** Restores cannons from a save without touching the queue. */
+  /**
+   * Restores cannons from a save without touching the queue.
+   *
+   * The reserve accounting for these rounds belongs to the caller, which has
+   * just rebuilt it from the save — this only puts the cannons back on the rail.
+   */
   restoreCannons(cannons: ActiveCannon[]): void {
     this.cannons.length = 0;
-    for (const cannon of cannons) {
-      this.reserve.promoteToActive(cannon.colorId, 0);
-      this.cannons.push(cannon);
-    }
+    for (const cannon of cannons) this.cannons.push(cannon);
   }
 
   update(deltaMs: number, nowMs: number): void {
@@ -185,12 +169,20 @@ export class CombatSimulator {
     this.retireExhaustedColors();
 
     for (const cannon of this.cannons) {
-      cannon.update(deltaMs);
-      this.maybeFire(cannon);
+      const travelled = cannon.update(deltaMs);
+      this.workLanes(cannon, travelled);
     }
 
-    this.stepProjectiles(deltaMs);
     this.removeFinishedCannons();
+
+    // A cannon that leaves the rail with rounds unspent gives them back to its
+    // colour, and nothing else in the game refills the queue: `take()` needs a
+    // tile to click and `dropExhausted()` only refills when it dropped
+    // something. Empty the queue while the rail holds everything, let one
+    // cannon give up, and the offer never came back — pixels left, no tiles,
+    // no way to play. The queue is cheap to top up when it is already full, so
+    // it is topped up every frame rather than at each place that frees rounds.
+    this.queue.refill();
   }
 
   /**
@@ -208,107 +200,78 @@ export class CombatSimulator {
   }
 
   /**
-   * Fires at most one ball, and only when the cell facing the cannon is its own
-   * colour.
+   * Walks every lane the cannon crossed and peels the ones that match.
    *
-   * Since a ball stops at the first solid cell, having the colour somewhere
-   * down the lane is not enough — it has to be the one exposed. The surface
-   * index answers that in one read, so a cannon whose colour is buried simply
-   * holds its fire and keeps travelling rather than throwing balls at a wall.
+   * This is where the rail became the clock. Sampling only the lane a cannon
+   * landed on wasted everything it flew over, and the faster it went the more
+   * it wasted — so speed bought no throughput at all. Now the work a cannon
+   * does is exactly the distance it covered.
    */
-  private maybeFire(cannon: ActiveCannon): void {
-    if (!cannon.canFire()) return;
+  private workLanes(cannon: ActiveCannon, travelled: number): void {
+    if (cannon.isRetired || cannon.ammo === 0) return;
 
-    const aim = cannon.aim();
-    const front = this.world.surface.frontIndex(aim.axis, aim.lane, aim.direction);
-    if (front < 0 || this.world.colorId[front] !== cannon.colorId) return;
+    // Enumerating from the position before the move keeps the lanes tiled
+    // exactly: no lane covered twice, none skipped, whatever the frame rate.
+    const from = cannon.trackPosition - travelled;
 
-    const size = axisLength(aim.axis, WORLD_WIDTH, WORLD_HEIGHT);
-    const spawned = this.pool.spawn({
-      cannonId: cannon.id,
-      colorId: cannon.colorId,
-      axis: aim.axis,
-      lane: aim.lane,
-      direction: aim.direction,
-      position: aim.direction > 0 ? 0 : size - 1,
-      speed: this.options.projectileSpeed,
-    });
-    if (!spawned) return; // pool saturated: hold the shot, spend nothing
+    for (const aim of crossedLanes(from, travelled)) {
+      this.stats.lanesExamined++;
 
-    cannon.onFired();
-    this.stats.shotsFired++;
-  }
+      const burst = resolveLaneBurst(this.world, cannon, aim);
+      if (burst.destroyed === 0) continue;
 
-  private stepProjectiles(deltaMs: number): void {
-    const deltaSeconds = deltaMs / 1000;
+      cannon.onBurst(burst.destroyed);
+      this.reserve.releaseFromActive(cannon.colorId, burst.destroyed);
 
-    this.pool.forEachActive((projectile) => {
-      const from = projectile.position;
-      const to = from + projectile.direction * projectile.speed * deltaSeconds;
-      projectile.position = to;
+      this.stats.bursts++;
+      this.stats.destroyed += burst.destroyed;
 
-      const size = axisLength(projectile.axis, WORLD_WIDTH, WORLD_HEIGHT);
-      const ranOff = projectile.direction > 0 ? from > size - 1 : from < 0;
-
-      if (ranOff) {
-        // Crossed the whole lane without finding its colour: no round spent.
-        this.creditMiss(projectile);
-        this.pool.release(projectile);
-        return;
+      if (burst.lastIndex >= 0) {
+        const x = burst.lastIndex % WORLD_WIDTH;
+        const y = (burst.lastIndex / WORLD_WIDTH) | 0;
+        this.stats.destroyed += this.blast(x, y, cannon.colorId);
       }
 
-      let hit = false;
-      let blocked = false;
+      this.bursts.push(burst);
+      this.sampleImpacts(burst);
 
-      traverseAxis(
-        projectile.axis,
-        projectile.lane,
-        projectile.direction,
-        Math.floor(from),
-        Math.floor(to),
-        WORLD_WIDTH,
-        WORLD_HEIGHT,
-        (cx, cy, index) => {
-          this.stats.cellsTraversed++;
-
-          // Holes and transparent margins are the only things a ball crosses.
-          const cell = this.world.colorId[index];
-          if (cell === DEAD || cell === VOID) return false;
-
-          // First solid cell on the path. It either matches and dies, or it
-          // stops the shot — the surface is what shields what lies behind.
-          if (cell === projectile.colorId && this.world.destroy(index)) {
-            this.stats.destroyed++;
-            this.stats.destroyed += this.blast(cx, cy, projectile.colorId);
-            this.creditHit(projectile);
-            if (this.lod.sample(1) > 0) {
-              this.visibleImpacts.push({ x: cx, y: cy, colorId: projectile.colorId });
-            }
-            hit = true;
-          } else {
-            blocked = true;
-          }
-          return true;
-        },
-      );
-
-      if (hit) {
-        this.pool.release(projectile);
-      } else if (blocked) {
-        // Another ball reached this cell first and exposed a colour that is not
-        // ours. No round is spent on a blocked shot.
-        this.creditMiss(projectile);
-        this.pool.release(projectile);
-      }
-    });
+      if (cannon.ammo === 0) return;
+    }
   }
 
   /**
-   * Destroys cells of the same colour around an impact.
+   * Picks the impacts worth drawing. The graphics budget must never hold back
+   * the logic: a burst of two hundred blocks is already resolved by the time
+   * this decides how many sparks it deserves.
+   */
+  private sampleImpacts(burst: BurstEvent): void {
+    const granted = this.lod.sample(burst.destroyed);
+    if (granted <= 0 || burst.firstIndex < 0) return;
+
+    const span = burst.destroyed;
+    for (let i = 0; i < granted; i++) {
+      // Spread the sparks over the peeled run rather than stacking them.
+      const step = span === 1 ? 0 : Math.round((i * (span - 1)) / Math.max(1, granted - 1));
+      const offset = burst.direction > 0 ? step : -step;
+      const index =
+        burst.axis === "row"
+          ? burst.firstIndex + offset
+          : burst.firstIndex + offset * WORLD_WIDTH;
+
+      this.visibleImpacts.push({
+        x: index % WORLD_WIDTH,
+        y: (index / WORLD_WIDTH) | 0,
+        colorId: burst.colorId,
+      });
+    }
+  }
+
+  /**
+   * Destroys cells of the same colour around the end of a burst.
    *
    * A span-filled disc bounded by the radius: at radius 0 — the base game —
-   * this does nothing at all, so "one ball, one block" holds until the player
-   * pays to widen it. Foreign colours inside the blast are never touched.
+   * this does nothing at all. Foreign colours inside the blast are never
+   * touched, or the per-colour economy would collapse.
    */
   private blast(cx: number, cy: number, colorId: number): number {
     const radius = this.options.blastRadius;
@@ -336,17 +299,7 @@ export class CombatSimulator {
     return destroyed;
   }
 
-  private creditHit(projectile: Projectile): void {
-    const cannon = this.cannons.find((c) => c.id === projectile.cannonId);
-    if (!cannon) return;
-    cannon.onHit();
-    this.reserve.releaseFromActive(cannon.colorId, 1);
-  }
 
-  private creditMiss(projectile: Projectile): void {
-    this.stats.misses++;
-    this.cannons.find((c) => c.id === projectile.cannonId)?.onMiss();
-  }
 
   private removeFinishedCannons(): void {
     for (let i = this.cannons.length - 1; i >= 0; i--) {

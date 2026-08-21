@@ -49,13 +49,18 @@ describe("ColorStats", () => {
     expect(stats.entryOf(1).shareOfInitial).toBeCloseTo(0.5, 2);
   });
 
+  // The effort per colour is no longer declared by a cadence — it is read back
+  // from what actually stopped existing between two samples. A colour standing
+  // behind another therefore shows as starved on its own, with nothing to
+  // configure: the wall makes its own measurement.
   it("flags the colour the run is actually waiting on", () => {
     const world = worldWithShares([0.8, 0.2]);
     const stats = new ColorStats(world);
 
-    // All the output goes to the small colour; the big one is the wall.
-    stats.sample(0, [0, 100]);
-    stats.sample(1000, [0, 100]);
+    // Only the small colour is actually dying; the big one is the wall.
+    stats.sample(0);
+    world.destroyRandomOfColor(1, 10_000, new XorShift32(11));
+    stats.sample(1000);
 
     const bottlenecks = stats.bottlenecks();
     expect(bottlenecks[0].colorId).toBe(0);
@@ -65,8 +70,10 @@ describe("ColorStats", () => {
   it("flags output poured into a colour that is nearly gone", () => {
     const world = worldWithShares([0.8, 0.2]);
     const stats = new ColorStats(world);
-    stats.sample(0, [0, 100]);
-    stats.sample(1000, [0, 100]);
+
+    stats.sample(0);
+    world.destroyRandomOfColor(1, 10_000, new XorShift32(12));
+    stats.sample(1000);
 
     const wasted = stats.wasted();
     expect(wasted.map((w) => w.colorId)).toContain(1);
@@ -75,8 +82,11 @@ describe("ColorStats", () => {
   it("reports nothing when effort matches need", () => {
     const world = worldWithShares([0.5, 0.5]);
     const stats = new ColorStats(world);
-    stats.sample(0, [50, 50]);
-    stats.sample(1000, [50, 50]);
+
+    stats.sample(0);
+    world.destroyRandomOfColor(0, 10_000, new XorShift32(13));
+    world.destroyRandomOfColor(1, 10_000, new XorShift32(14));
+    stats.sample(1000);
 
     expect(stats.bottlenecks()).toHaveLength(0);
     expect(stats.wasted()).toHaveLength(0);
@@ -87,11 +97,26 @@ describe("ColorStats", () => {
     const stats = new ColorStats(world);
     world.destroyRandomOfColor(0, PIXEL_COUNT, new XorShift32(3));
 
-    stats.sample(0, [0, 100]);
-    stats.sample(1000, [0, 100]);
+    stats.sample(0);
+    world.destroyRandomOfColor(1, 10_000, new XorShift32(15));
+    stats.sample(1000);
 
     expect(stats.bottlenecks().map((b) => b.colorId)).not.toContain(0);
     expect(stats.entryOf(0).exhausted).toBe(true);
+  });
+
+  it("carries the measured rates out for the offline model", () => {
+    const world = worldWithShares([0.5, 0.5]);
+    const stats = new ColorStats(world);
+
+    stats.sample(0);
+    world.destroyRandomOfColor(0, 2000, new XorShift32(16));
+    stats.sample(1000);
+
+    const rates = stats.ratesByColor();
+    expect(rates).toHaveLength(2);
+    expect(rates[0]).toBeGreaterThan(0);
+    expect(rates[1]).toBe(0);
   });
 
   it("measures a smoothed destruction rate", () => {

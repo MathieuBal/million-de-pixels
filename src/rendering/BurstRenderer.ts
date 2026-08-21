@@ -1,7 +1,8 @@
 import { Container, Particle, ParticleContainer, Texture } from "pixi.js";
 import type { PaletteEntry } from "../core/constants";
+import { WORLD_WIDTH } from "../core/constants";
 import type { ImpactEvent } from "../combat/CombatSimulator";
-import { projectileX, projectileY, type ProjectilePool } from "../combat/ProjectilePool";
+import type { BurstEvent } from "../combat/LineBurst";
 import type { CannonAim } from "../combat/Cannon";
 
 /**
@@ -15,46 +16,74 @@ const CANNON_LENGTH = 14;
 /** Starting size of an impact spark, in board cells. It shrinks to one. */
 const SPARK_SIZE = 3;
 
-interface Spark {
+/** Width of a tracer across its lane, in board cells. */
+const TRACER_WIDTH = 6;
+
+/** How long a tracer stays visible. Short: the lane is already gone. */
+const TRACER_LIFE_MS = 170;
+
+interface Fading {
   particle: Particle;
   lifeMs: number;
   maxLifeMs: number;
 }
 
+interface Tracer extends Fading {
+  /** Which of the two scales is the band's width across its lane. */
+  widthAxis: "x" | "y";
+}
+
 /**
- * Everything the player actually sees moving: balls and impact sparks.
+ * Everything the player actually sees of a burst: the lane it peeled, and
+ * sparks along it.
+ *
+ * There are no travelling balls any more. A burst resolves instantly — the
+ * whole matching run on the lane dies in the same frame — so a ball still
+ * flying towards a cell that no longer exists would be a lie. What replaces it
+ * is a tracer: a band down the lane that was peeled, fading out over a sixth of
+ * a second, plus sparks sampled by the LOD controller.
  *
  * Both live in `ParticleContainer`s, which draw lightweight particles outside
  * the regular scene graph. The count here is bounded by the LOD budget and has
- * no relation to the logical impact rate — that is the whole point.
+ * no relation to the logical destruction rate — that is the whole point: the
+ * graphics budget can never hold a burst back.
  */
-export class ProjectileRenderer {
+export class BurstRenderer {
   readonly view = new Container();
 
-  private readonly ballLayer = new ParticleContainer({
+  private readonly tracerLayer = new ParticleContainer({
     dynamicProperties: { position: true, color: true, scale: true, rotation: false },
   });
   private readonly sparkLayer = new ParticleContainer({
     dynamicProperties: { position: true, color: true, scale: true, rotation: false },
   });
+  private readonly muzzleLayer = new ParticleContainer({
+    dynamicProperties: { position: true, color: true, scale: true, rotation: false },
+  });
 
-  private readonly balls: Particle[] = [];
-  private readonly sparks: Spark[] = [];
+  private readonly tracers: Tracer[] = [];
+  private readonly tracerPool: Particle[] = [];
+  private readonly sparks: Fading[] = [];
   private readonly sparkPool: Particle[] = [];
 
   /**
    * A single white texel. Drawn at scale 1 it covers exactly one board cell,
-   * so a ball is the size of the pixel it destroys — the whole point of the
+   * so a spark is the size of the pixel it replaces — the whole point of the
    * scale the game is played at.
    */
   private readonly dotTexture: Texture = Texture.WHITE;
   private palette: PaletteEntry[];
   private readonly muzzles: Particle[] = [];
 
-  constructor(palette: PaletteEntry[], private readonly maxSparks = 1200) {
+  constructor(
+    palette: PaletteEntry[],
+    private readonly maxSparks = 1200,
+    private readonly maxTracers = 256,
+  ) {
     this.palette = palette;
+    this.view.addChild(this.tracerLayer);
     this.view.addChild(this.sparkLayer);
-    this.view.addChild(this.ballLayer);
+    this.view.addChild(this.muzzleLayer);
   }
 
   setPalette(palette: PaletteEntry[]): void {
@@ -80,7 +109,7 @@ export class ProjectileRenderer {
     while (this.muzzles.length < aims.length) {
       const particle = new Particle({ texture: this.dotTexture, anchorX: 0.5, anchorY: 0.5 });
       this.muzzles.push(particle);
-      this.ballLayer.addParticle(particle);
+      this.muzzleLayer.addParticle(particle);
     }
 
     for (let i = 0; i < this.muzzles.length; i++) {
@@ -99,36 +128,45 @@ export class ProjectileRenderer {
       muzzle.scaleY = entry.aim.axis === "column" ? CANNON_LENGTH : 1;
       muzzle.color = this.packedColorOf(entry.colorId);
     }
+    this.muzzleLayer.update();
   }
 
-  /** Mirrors the live projectile pool into particles, reusing the same objects. */
-  syncProjectiles(pool: ProjectilePool): void {
-    let used = 0;
+  /**
+   * Spawns one tracer per burst, spanning the run of cells it took out.
+   *
+   * A one-block burst still gets a tracer, one cell long: the player needs to
+   * see the lane that fired, not only how much it cost.
+   */
+  spawnBursts(bursts: readonly BurstEvent[]): void {
+    for (const burst of bursts) {
+      if (this.tracers.length >= this.maxTracers) break;
+      if (burst.destroyed <= 0 || burst.firstIndex < 0) continue;
 
-    pool.forEachActive((projectile) => {
-      let particle = this.balls[used];
-      if (!particle) {
-        particle = new Particle({ texture: this.dotTexture, anchorX: 0.5, anchorY: 0.5 });
-        this.balls.push(particle);
-        this.ballLayer.addParticle(particle);
-      }
-      // A ball only stores its lane and how far along it is; the board-space
-      // position is derived here, for drawing only.
-      particle.x = projectileX(projectile);
-      particle.y = projectileY(projectile);
-      // Exactly one cell: a ball is the size of the pixel it will destroy.
-      particle.scaleX = 1;
-      particle.scaleY = 1;
-      particle.color = this.packedColorOf(projectile.colorId);
-      used++;
-    });
+      const particle =
+        this.tracerPool.pop() ??
+        new Particle({ texture: this.dotTexture, anchorX: 0.5, anchorY: 0.5 });
 
-    // Park the surplus off-screen rather than reallocating the container.
-    for (let i = used; i < this.balls.length; i++) {
-      this.balls[i].scaleX = 0;
-      this.balls[i].scaleY = 0;
+      const firstX = burst.firstIndex % WORLD_WIDTH;
+      const firstY = (burst.firstIndex / WORLD_WIDTH) | 0;
+      const lastX = burst.lastIndex % WORLD_WIDTH;
+      const lastY = (burst.lastIndex / WORLD_WIDTH) | 0;
+
+      particle.x = (firstX + lastX) / 2;
+      particle.y = (firstY + lastY) / 2;
+
+      const span = burst.destroyed;
+      particle.scaleX = burst.axis === "row" ? span : TRACER_WIDTH;
+      particle.scaleY = burst.axis === "row" ? TRACER_WIDTH : span;
+      particle.color = this.packedColorOf(burst.colorId);
+
+      this.tracerLayer.addParticle(particle);
+      this.tracers.push({
+        particle,
+        lifeMs: 0,
+        maxLifeMs: TRACER_LIFE_MS,
+        widthAxis: burst.axis === "row" ? "y" : "x",
+      });
     }
-    this.ballLayer.update();
   }
 
   spawnImpacts(impacts: readonly ImpactEvent[]): void {
@@ -151,6 +189,28 @@ export class ProjectileRenderer {
   }
 
   update(deltaMs: number): void {
+    for (let i = this.tracers.length - 1; i >= 0; i--) {
+      const tracer = this.tracers[i];
+      tracer.lifeMs += deltaMs;
+
+      const t = tracer.lifeMs / tracer.maxLifeMs;
+      if (t >= 1) {
+        this.tracerLayer.removeParticle(tracer.particle);
+        this.tracerPool.push(tracer.particle);
+        this.tracers[i] = this.tracers[this.tracers.length - 1];
+        this.tracers.pop();
+        continue;
+      }
+
+      // The band narrows across its lane as it fades, so a long burst reads as
+      // a beam collapsing rather than a rectangle blinking out.
+      const width = TRACER_WIDTH * (1 - t) + 1;
+      if (tracer.widthAxis === "x") tracer.particle.scaleX = width;
+      else tracer.particle.scaleY = width;
+      tracer.particle.color = fadeAlpha(tracer.particle.color, 1 - t);
+    }
+    this.tracerLayer.update();
+
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const spark = this.sparks[i];
       spark.lifeMs += deltaMs;
@@ -167,9 +227,7 @@ export class ProjectileRenderer {
       const scale = SPARK_SIZE * (1 - t) + 1;
       spark.particle.scaleX = scale;
       spark.particle.scaleY = scale;
-      // Only the alpha byte changes as the spark fades out.
-      spark.particle.color =
-        ((spark.particle.color & 0x00ffffff) | (Math.round(255 * (1 - t)) << 24)) >>> 0;
+      spark.particle.color = fadeAlpha(spark.particle.color, 1 - t);
     }
     this.sparkLayer.update();
   }
@@ -178,10 +236,17 @@ export class ProjectileRenderer {
     return this.sparks.length;
   }
 
+  get tracerCount(): number {
+    return this.tracers.length;
+  }
+
   destroy(): void {
     // Texture.WHITE is shared and owned by Pixi: never destroy it here.
     this.view.destroy({ children: true });
   }
 }
 
-
+/** Rewrites only the alpha byte of a packed ABGR colour. */
+function fadeAlpha(packed: number, alpha: number): number {
+  return ((packed & 0x00ffffff) | (Math.round(255 * alpha) << 24)) >>> 0;
+}

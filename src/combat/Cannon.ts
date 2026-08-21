@@ -69,6 +69,37 @@ export class Cannon {
 }
 
 /**
+ * Every lane whose integer perimeter position lies in `[from, from + distance)`,
+ * in travel order, corners included.
+ *
+ * This is what makes the rail the clock. Sampling only the lane a cannon lands
+ * on after a frame's move throws away everything it flew over — and the faster
+ * it goes, the more it throws away, which is why buying speed used to buy no
+ * throughput at all.
+ *
+ * The set of integers in that half-open range depends only on the two numbers,
+ * never on how many frames were used to cover it: the same simulated time from
+ * the same position visits exactly the same lanes at 30, 60 or 120 FPS.
+ *
+ * Capped at one lap — beyond that a single step would revisit lanes it has just
+ * emptied, which is work without meaning.
+ */
+export function* crossedLanes(from: number, distance: number): Generator<CannonAim> {
+  if (!(distance > 0)) return;
+
+  // Half-open [from, from + distance): consecutive steps then tile the
+  // perimeter exactly, with no lane covered twice and none skipped.
+  const span = Math.min(distance, PERIMETER);
+  const origin = wrap(from);
+  const start = Math.ceil(origin);
+  const count = Math.ceil(origin + span) - start;
+
+  for (let i = 0; i < count; i++) {
+    yield aimAt(start + i);
+  }
+}
+
+/**
  * Maps a perimeter position to an edge. The sides run clockwise starting at the
  * top-left corner: top, right, bottom, left.
  */

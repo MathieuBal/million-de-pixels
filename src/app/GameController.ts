@@ -24,7 +24,7 @@ import type { CurrentLevelSave } from "../persistence/schema";
 import { SAVE_SCHEMA_VERSION } from "../persistence/schema";
 import { PixelTextureRenderer } from "../rendering/PixelTextureRenderer";
 import { Viewport, type ScreenRect } from "../rendering/Viewport";
-import { ProjectileRenderer } from "../rendering/ProjectileRenderer";
+import { BurstRenderer } from "../rendering/BurstRenderer";
 import {
   DESKTOP_BUDGET,
   MOBILE_BUDGET,
@@ -86,7 +86,7 @@ export class GameController {
   private queue: CannonQueue | null = null;
   private combat: CombatSimulator | null = null;
   private board: PixelTextureRenderer | null = null;
-  private projectiles: ProjectileRenderer | null = null;
+  private bursts: BurstRenderer | null = null;
   private milestones = new MilestoneTracker();
   private stats: ColorStats | null = null;
   private upgrades = new UpgradeState();
@@ -167,8 +167,7 @@ export class GameController {
   private applyUpgrades(): void {
     const effects = this.upgrades.effects();
     this.combat?.setMaxActiveCannons(effects.maxActiveCannons);
-    this.combat?.setBlastRadius(effects.blastRadius);
-    this.combat?.tuneCannons(effects.fireIntervalMs, effects.moveSpeed);
+    this.combat?.tuneCannons(effects.moveSpeed);
     this.generator?.setAmmoPerLoad(effects.ammoPerLoad);
     this.queue?.setSize(effects.visibleLoads);
   }
@@ -260,10 +259,10 @@ export class GameController {
     this.board = new PixelTextureRenderer(world.colorId, world.width, world.height, world.palette, {
       uploadHz: this.lod.currentBudget.textureUploadHz,
     });
-    this.projectiles = new ProjectileRenderer(world.palette);
+    this.bursts = new BurstRenderer(world.palette);
 
     this.boardLayer.addChild(this.board.mesh);
-    this.boardLayer.addChild(this.projectiles.view);
+    this.boardLayer.addChild(this.bursts.view);
 
     // Balls are one cell across, so the level opens close enough for a
     // destroyed pixel to read as an event rather than as noise.
@@ -293,10 +292,10 @@ export class GameController {
       this.board.destroy();
       this.board = null;
     }
-    if (this.projectiles) {
-      this.boardLayer.removeChild(this.projectiles.view);
-      this.projectiles.destroy();
-      this.projectiles = null;
+    if (this.bursts) {
+      this.boardLayer.removeChild(this.bursts.view);
+      this.bursts.destroy();
+      this.bursts = null;
     }
     this.world?.onDestroy(null);
     this.combat = null;
@@ -337,12 +336,12 @@ export class GameController {
 
     const stats = this.combat.getStats();
 
-    this.projectiles?.syncCannons(
+    this.bursts?.syncCannons(
       this.combat.activeCannons.map((cannon) => ({ aim: cannon.aim(), colorId: cannon.colorId })),
     );
-    this.projectiles?.syncProjectiles(this.combat.pool);
-    this.projectiles?.spawnImpacts(this.combat.visibleImpacts);
-    this.projectiles?.update(deltaMs);
+    this.bursts?.spawnBursts(this.combat.bursts);
+    this.bursts?.spawnImpacts(this.combat.visibleImpacts);
+    this.bursts?.update(deltaMs);
 
     if (this.world.isDirty()) {
       this.board.markDirty();
@@ -351,14 +350,21 @@ export class GameController {
     this.board.syncTexture(nowMs);
 
     // The chromatic distribution is live gameplay data, not a readout: it is
-    // what drives bottleneck detection and, later, the deck's adaptation.
-    this.stats?.sample(nowMs, this.combat.shotsPerSecondByColor(this.world.paletteSize));
+    // what drives bottleneck detection and, later, the deck's adaptation. The
+    // per-colour effort is no longer declared by a cadence — it is measured
+    // from what actually stopped existing.
+    this.stats?.sample(nowMs);
 
     const crossed = this.milestones.update(this.world.progress());
     for (const milestone of crossed) this.events.onMilestone?.(milestone);
 
     this.profiler.recordFrame(deltaMs, simMs);
-    this.profiler.recordCounters(nowMs, stats.shotsFired, this.combat.visibleImpacts.length, stats.destroyed);
+    this.profiler.recordCounters(
+      nowMs,
+      stats.lanesExamined,
+      this.combat.visibleImpacts.length,
+      stats.destroyed,
+    );
 
     if (this.saveDirty && nowMs - this.lastAutosaveMs > AUTOSAVE_INTERVAL_MS) {
       this.lastAutosaveMs = nowMs;
@@ -400,6 +406,9 @@ export class GameController {
       loads: [...queue.visible],
       cannons: combat.activeCannons.map((cannon) => cannon.serialize()),
       upgrades: this.upgrades.serialize(),
+      // What the rail was actually producing, per colour, at the moment the
+      // player left. The offline model runs on this rather than on a formula.
+      observedRateByColor: this.stats?.ratesByColor() ?? [],
       rngAlgorithm: RNG_ALGORITHM,
       rngState: this.rng.snapshot(),
       fractionalCarryByColor: this.fractionalCarry,
@@ -455,6 +464,7 @@ export class GameController {
       const report = await this.runOfflineCatchUp(
         world,
         saved.cannons,
+        saved.observedRateByColor,
         world.colorId,
         world.hp,
         elapsedMs,
@@ -502,15 +512,29 @@ export class GameController {
   private async runOfflineCatchUp(
     world: PixelWorld,
     cannons: ActiveCannonState[],
+    observedRateByColor: readonly number[],
     colorId: Uint8Array,
     hp: Uint8Array,
     elapsedMs: number,
   ): Promise<{ colorId: Uint8Array; hp: Uint8Array; report: OfflineReport } | null> {
-    const dps = new Array<number>(world.paletteSize).fill(0);
+    // Production used to be derived from each cannon's fire interval. There is
+    // no interval any more, and no formula predicts a burst rate: it depends on
+    // how much of the colour the surface happens to expose, which only the
+    // simulation knows. So the model carries the rate that was *measured* while
+    // the player was there, capped by the rounds their cannons still hold — a
+    // colour cannot produce offline what it has no ammunition for.
+    const stock = new Array<number>(world.paletteSize).fill(0);
     for (const cannon of cannons) {
-      if (cannon.colorId >= dps.length) continue;
-      // One round per fire interval, capped by what the cannon still carries.
-      dps[cannon.colorId] += 1000 / Math.max(1, cannon.fireIntervalMs);
+      if (cannon.colorId >= stock.length) continue;
+      stock[cannon.colorId] += cannon.ammo;
+    }
+
+    const seconds = Math.max(1, elapsedMs / 1000);
+    const dps = new Array<number>(world.paletteSize).fill(0);
+    for (let colour = 0; colour < dps.length; colour++) {
+      if (stock[colour] === 0) continue;
+      const measured = Math.max(0, observedRateByColor[colour] ?? 0);
+      dps[colour] = Math.min(measured, stock[colour] / seconds);
     }
 
     try {

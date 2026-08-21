@@ -1,15 +1,9 @@
-import { CANNON_FIRE_INTERVAL_MS, CANNON_MOVE_SPEED } from "../cannon/ActiveCannon";
+import { CANNON_MOVE_SPEED } from "../cannon/ActiveCannon";
 import { DEFAULT_LOAD_AMMO } from "../cannon/CannonLoad";
 import { VISIBLE_LOADS } from "../cannon/CannonQueue";
 import { MAX_ACTIVE_CANNONS } from "../combat/CombatSimulator";
 
-export type UpgradeId =
-  | "cadence"
-  | "vitesse"
-  | "explosion"
-  | "canons"
-  | "munitions"
-  | "cases";
+export type UpgradeId = "vitesse" | "canons" | "munitions" | "cases";
 
 export type UpgradeFamily = "canons" | "cases";
 
@@ -29,49 +23,27 @@ export interface UpgradeDefinition {
 }
 
 /**
- * The six axes a player can push, in two families.
+ * The four axes a player can push, in two families.
  *
- * Every number here is an opening value to balance, not a rule. What is not
- * negotiable is the shape: the base level is the game as specified — one ball
- * destroys one block, five cannons, forty rounds — and upgrades widen it from
- * there.
+ * Speed leads, because the rail is the clock: every lane a cannon crosses is an
+ * opportunity, so cells per second are lanes examined per second. Many small
+ * steps rather than a few large ones — the player should feel the rail turn
+ * faster often.
+ *
+ * Every number here is an opening value to balance, not a rule.
  */
 export const UPGRADES: UpgradeDefinition[] = [
-  {
-    id: "cadence",
-    family: "canons",
-    label: "Cadence",
-    glyph: "×2",
-    description: "Intervalle entre deux billes",
-    maxLevel: 10,
-    basePrice: 120,
-    priceGrowth: 1.7,
-    valueAt: (level) => Math.max(30, Math.round(CANNON_FIRE_INTERVAL_MS * 0.86 ** level)),
-    format: (value) => `${value} ms`,
-  },
   {
     id: "vitesse",
     family: "canons",
     label: "Vitesse",
     glyph: "⌁",
-    description: "Déplacement du canon sur le rail",
-    maxLevel: 8,
-    basePrice: 150,
-    priceGrowth: 1.7,
-    valueAt: (level) => Math.round(CANNON_MOVE_SPEED * 1.18 ** level),
-    format: (value) => `${value} c/s`,
-  },
-  {
-    id: "explosion",
-    family: "canons",
-    label: "Explosion",
-    glyph: "▦",
-    description: "Rayon d'impact, sur la couleur visée",
-    maxLevel: 5,
-    basePrice: 400,
-    priceGrowth: 2.4,
-    valueAt: (level) => level,
-    format: (value) => (value === 0 ? "1 bloc" : `rayon ${value}`),
+    description: "Voies examinées par seconde",
+    maxLevel: 15,
+    basePrice: 120,
+    priceGrowth: 1.45,
+    valueAt: (level) => Math.round(CANNON_MOVE_SPEED * 1.08 ** level),
+    format: (value) => `${value} voies/s`,
   },
   {
     id: "canons",
@@ -116,9 +88,7 @@ export const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
 export type UpgradeLevels = Partial<Record<UpgradeId, number>>;
 
 export interface UpgradeEffects {
-  fireIntervalMs: number;
   moveSpeed: number;
-  blastRadius: number;
   maxActiveCannons: number;
   ammoPerLoad: number;
   visibleLoads: number;
@@ -189,9 +159,7 @@ export class UpgradeState {
 
   effects(): UpgradeEffects {
     return {
-      fireIntervalMs: valueOf("cadence", this.levelOf("cadence")),
       moveSpeed: valueOf("vitesse", this.levelOf("vitesse")),
-      blastRadius: valueOf("explosion", this.levelOf("explosion")),
       maxActiveCannons: valueOf("canons", this.levelOf("canons")),
       ammoPerLoad: valueOf("munitions", this.levelOf("munitions")),
       visibleLoads: valueOf("cases", this.levelOf("cases")),

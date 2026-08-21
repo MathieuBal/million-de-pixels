@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import "fake-indexeddb/auto";
 import { SaveRepository } from "../../src/persistence/SaveRepository";
 import { migrate } from "../../src/persistence/migrations";
+import { CANNON_MOVE_SPEED } from "../../src/cannon/ActiveCannon";
 import { SAVE_SCHEMA_VERSION, type CurrentLevelSave } from "../../src/persistence/schema";
 import { RNG_ALGORITHM } from "../../src/rng/XorShift32";
 import { DEAD, type PaletteEntry } from "../../src/core/constants";
@@ -35,7 +36,7 @@ function makeSave(overrides: Partial<CurrentLevelSave> = {}): CurrentLevelSave {
       { id: "load-1", colorId: 0, ammo: 40 },
       { id: "load-2", colorId: 1, ammo: 40 },
     ],
-    upgrades: { levels: { cadence: 2 }, earned: 5000, spent: 1200 },
+    upgrades: { levels: { vitesse: 2 }, earned: 5000, spent: 1200 },
     cannons: [
       {
         id: "load-0",
@@ -44,10 +45,9 @@ function makeSave(overrides: Partial<CurrentLevelSave> = {}): CurrentLevelSave {
         maxAmmo: 40,
         trackPosition: 1200,
         moveSpeed: 260,
-        fireIntervalMs: 140,
-        fireCooldownMs: 0,
       },
     ],
+    observedRateByColor: [120, 45],
     rngAlgorithm: RNG_ALGORITHM,
     rngState: 123456,
     fractionalCarryByColor: [0.25, 0.75],
@@ -79,7 +79,8 @@ describe("SaveRepository", () => {
     expect(loaded!.cannons).toHaveLength(1);
     expect(loaded!.cannons[0].ammo).toBe(17);
     expect(loaded!.cannons[0].trackPosition).toBeCloseTo(1200, 10);
-    expect(loaded!.upgrades.levels.cadence).toBe(2);
+    expect(loaded!.upgrades.levels.vitesse).toBe(2);
+    expect(loaded!.observedRateByColor).toEqual([120, 45]);
     expect(loaded!.upgrades.earned).toBe(5000);
   });
 
@@ -151,6 +152,39 @@ describe("save migration", () => {
     expect(migrated.upgrades.levels).toEqual({});
     expect(migrated.upgrades.earned).toBe(CELLS / 4);
     expect(migrated.upgrades.spent).toBe(0);
+  });
+
+  it("drops the fire cadence a v4 cannon carried", () => {
+    const { observedRateByColor: _r, ...rest } = makeSave();
+    const v4 = {
+      ...rest,
+      schemaVersion: 4 as const,
+      cannons: [
+        {
+          id: "load-0",
+          colorId: 0,
+          ammo: 17,
+          maxAmmo: 40,
+          trackPosition: 1200,
+          moveSpeed: 999,
+          fireIntervalMs: 140,
+          fireCooldownMs: 60,
+        },
+      ],
+    };
+
+    const migrated = migrate(v4 as never);
+
+    expect(migrated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+    // The cannon keeps its stock and its place on the rail; only the cadence
+    // and the tuned speed go, because the upgrades in the same save put the
+    // speed back on the first frame.
+    expect(migrated.cannons[0].ammo).toBe(17);
+    expect(migrated.cannons[0].trackPosition).toBe(1200);
+    expect(migrated.cannons[0].moveSpeed).toBe(CANNON_MOVE_SPEED);
+    expect("fireIntervalMs" in migrated.cannons[0]).toBe(false);
+    expect("fireCooldownMs" in migrated.cannons[0]).toBe(false);
+    expect(migrated.observedRateByColor).toEqual([]);
   });
 
   it("drops the v2 deck without touching the board", () => {
