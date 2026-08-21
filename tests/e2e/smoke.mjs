@@ -96,7 +96,10 @@ try {
 
   await page.waitForTimeout(5000);
   const after = digits(await page.locator("#alive-count").innerText());
-  check("des pixels sont reellement detruits", after < before, `${before} → ${after}`);
+  // A lone cannon may legitimately destroy nothing: a ball stops at the first
+  // solid cell, so a colour buried behind another has no shot until the facade
+  // is gone. What must never happen is pixels coming back.
+  check("aucun pixel ne reapparait", after <= before, `${before} → ${after}`);
 
   console.log("\n— plusieurs canons —");
   let launches = 1;
@@ -123,6 +126,8 @@ try {
     destroyedTotal <= roundsCommitted,
     `${destroyedTotal} blocs pour ${roundsCommitted} billes engagees`,
   );
+  // With a rail full of colours, at least one of them faces the board.
+  check("le rail entame l'image", destroyedTotal > 0, `${destroyedTotal} blocs`);
 
   console.log("\n— camera —");
   const zoomStart = await page.locator("#zoom-level").innerText();

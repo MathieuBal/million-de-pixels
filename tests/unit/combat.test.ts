@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { ActiveCannon } from "../../src/cannon/ActiveCannon";
 import { CannonLoadGenerator, DEFAULT_LOAD_AMMO } from "../../src/cannon/CannonLoad";
-import { CannonQueue } from "../../src/cannon/CannonQueue";
+import { CannonQueue, VISIBLE_LOADS } from "../../src/cannon/CannonQueue";
 import { ColorAmmoReserve } from "../../src/cannon/ColorAmmoReserve";
 import { CombatSimulator, MAX_ACTIVE_CANNONS } from "../../src/combat/CombatSimulator";
 import { ProjectilePool } from "../../src/combat/ProjectilePool";
 import { PixelWorld } from "../../src/world/PixelWorld";
 import { XorShift32 } from "../../src/rng/XorShift32";
 import { VisualLODController } from "../../src/rendering/VisualLODController";
-import { DEAD, PIXEL_COUNT, WORLD_WIDTH } from "../../src/core/constants";
+import { DEAD, PIXEL_COUNT, WORLD_HEIGHT, WORLD_WIDTH } from "../../src/core/constants";
 import { makePalette } from "../fixtures/palette";
 
 /** Diagonal stripes: every row and every column holds every colour. */
@@ -83,7 +83,7 @@ describe("ColorAmmoReserve", () => {
 describe("CannonQueue", () => {
   it("offers a fixed number of loads", () => {
     const { queue } = setup();
-    expect(queue.visible).toHaveLength(5);
+    expect(queue.visible).toHaveLength(VISIBLE_LOADS);
     for (const load of queue.visible) expect(load.ammo).toBe(DEFAULT_LOAD_AMMO);
   });
 
@@ -106,7 +106,7 @@ describe("CannonQueue", () => {
     const { queue } = setup();
     const first = queue.visible[0];
     expect(queue.take(first.id)).not.toBeNull();
-    expect(queue.visible).toHaveLength(5);
+    expect(queue.visible).toHaveLength(VISIBLE_LOADS);
     expect(queue.visible.find((l) => l.id === first.id)).toBeUndefined();
   });
 
@@ -314,6 +314,86 @@ describe("CombatSimulator", () => {
     }
     expect(destroyedColors).toBeGreaterThan(0);
     expect(destroyedColors).toBeLessThanOrEqual(touched.size);
+  });
+
+  it("is blocked by a foreign colour and spends no round", () => {
+    // Two stacked bands: colour 1 covers colour 0 from the top.
+    const colorId = new Uint8Array(PIXEL_COUNT);
+    for (let i = 0; i < PIXEL_COUNT; i++) {
+      colorId[i] = ((i / WORLD_WIDTH) | 0) < WORLD_HEIGHT / 2 ? 1 : 0;
+    }
+
+    const world = PixelWorld.create(makePalette(2, [PIXEL_COUNT / 2, PIXEL_COUNT / 2]), colorId);
+    const reserve = new ColorAmmoReserve(world);
+    const queue = new CannonQueue(new CannonLoadGenerator(reserve, new XorShift32(4)), reserve);
+    queue.refill();
+    const combat = new CombatSimulator(world, queue, reserve, {}, new VisualLODController());
+
+    const load = queue.visible.find((l) => l.colorId === 0)!;
+    const cannon = combat.launch(load.id)!;
+    // Parked on the top edge: colour 1 faces it, colour 0 is behind.
+    cannon.moveSpeed = 0;
+    cannon.trackPosition = 200;
+
+    const before = cannon.ammo;
+    run(combat, 120);
+
+    expect(cannon.ammo).toBe(before);
+    expect(world.aliveByColor(0)).toBe(PIXEL_COUNT / 2);
+    expect(world.aliveByColor(1)).toBe(PIXEL_COUNT / 2);
+  });
+
+  it("fires once the colour in front of it has been cleared", () => {
+    // Column 0 is colour 1 on top of colour 0; every other column is colour 1.
+    const colorId = new Uint8Array(PIXEL_COUNT).fill(1);
+    for (let y = 4; y < WORLD_HEIGHT; y++) colorId[y * WORLD_WIDTH] = 0;
+
+    const counts = [WORLD_HEIGHT - 4, PIXEL_COUNT - (WORLD_HEIGHT - 4)];
+    const world = PixelWorld.create(makePalette(2, counts), colorId);
+    const reserve = new ColorAmmoReserve(world);
+    const queue = new CannonQueue(new CannonLoadGenerator(reserve, new XorShift32(8)), reserve);
+    queue.refill();
+    const combat = new CombatSimulator(world, queue, reserve, {}, new VisualLODController());
+
+    const load = queue.visible.find((l) => l.colorId === 0)!;
+    const cannon = combat.launch(load.id)!;
+    cannon.moveSpeed = 0;
+    cannon.trackPosition = 0; // top of column 0
+
+    run(combat, 60);
+    expect(world.aliveByColor(0)).toBe(counts[0]); // the facade holds
+
+    // Strip the four cells of colour 1 capping the column.
+    for (let y = 0; y < 4; y++) world.destroy(y * WORLD_WIDTH);
+
+    run(combat, 60);
+    expect(world.aliveByColor(0)).toBeLessThan(counts[0]);
+  });
+
+  it("takes a cannon off the rail when its colour is unreachable", () => {
+    // Colour 0 is walled in on all four sides by colour 1.
+    const colorId = new Uint8Array(PIXEL_COUNT).fill(1);
+    for (let y = 300; y < 700; y++) {
+      for (let x = 300; x < 700; x++) colorId[y * WORLD_WIDTH + x] = 0;
+    }
+
+    const buried = 400 * 400;
+    const world = PixelWorld.create(makePalette(2, [buried, PIXEL_COUNT - buried]), colorId);
+    const reserve = new ColorAmmoReserve(world);
+    const queue = new CannonQueue(new CannonLoadGenerator(reserve, new XorShift32(12)), reserve);
+    queue.refill();
+    const combat = new CombatSimulator(world, queue, reserve, {}, new VisualLODController());
+
+    const load = queue.visible.find((l) => l.colorId === 0)!;
+    combat.launch(load.id);
+
+    // One full lap at the default speed, and a little more.
+    run(combat, 1200);
+
+    expect(combat.activeCannons).toHaveLength(0);
+    expect(world.aliveByColor(0)).toBe(buried);
+    // Its rounds went back to the reserve rather than vanishing.
+    expect(reserve.stateOf(0).activeAmmo).toBe(0);
   });
 
   it("does nothing at all with an empty rail", () => {

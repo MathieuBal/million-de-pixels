@@ -8,7 +8,7 @@ import {
 } from "../core/constants";
 import type { Rng } from "../rng/XorShift32";
 import { ColorIndex } from "./ColorIndex";
-import { LaneIndex } from "./LaneIndex";
+import { SurfaceIndex } from "./SurfaceIndex";
 import { MacroTileIndex } from "./MacroTileIndex";
 
 export interface PixelWorldBuffers {
@@ -48,8 +48,8 @@ export class PixelWorld {
 
   readonly colorIndex: ColorIndex;
   readonly macroTiles: MacroTileIndex;
-  /** Answers "is there still a red pixel in this row?" in one read. */
-  readonly lanes: LaneIndex;
+  /** Answers "which cell faces a cannon coming from here?" in one read. */
+  readonly surface: SurfaceIndex;
 
   /** Cells that were playable at import time (excludes VOID). */
   readonly playablePixels: number;
@@ -77,7 +77,7 @@ export class PixelWorld {
 
     this.colorIndex = ColorIndex.build(colorId, this.paletteSize);
     this.macroTiles = MacroTileIndex.build(colorId, this.paletteSize);
-    this.lanes = LaneIndex.build(colorId, this.paletteSize);
+    this.surface = SurfaceIndex.build(colorId, this.paletteSize);
 
     let voidPixels = 0;
     let destroyed = 0;
@@ -170,7 +170,7 @@ export class PixelWorld {
     this.colorId[pixelIndex] = DEAD;
     this.hp[pixelIndex] = 0;
     this.macroTiles.decrement(x, y, color);
-    this.lanes.decrement(x, y, color);
+    this.surface.onDestroyed(this.colorId, x, y);
 
     this.destroyedTotal++;
     this.dirty = true;

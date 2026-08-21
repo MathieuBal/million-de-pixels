@@ -42,6 +42,15 @@ export class ActiveCannon {
   /** Balls of this cannon still travelling. */
   inFlight = 0;
 
+  /**
+   * Rail distance covered since the last shot left. A ball stops at the first
+   * solid cell, so a colour buried behind another is unreachable from every
+   * side; without this a cannon for such a colour would orbit forever and hold
+   * a rail slot hostage. A full lap with nothing to shoot means there is
+   * nothing to shoot.
+   */
+  private distanceSinceShot = 0;
+
   /** Set when the colour ran out under it: the mission ends immediately. */
   private retired = false;
 
@@ -57,8 +66,12 @@ export class ActiveCannon {
   }
 
   update(deltaMs: number): void {
-    this.trackPosition = (this.trackPosition + this.moveSpeed * (deltaMs / 1000)) % PERIMETER;
+    const travelled = this.moveSpeed * (deltaMs / 1000);
+    this.trackPosition = (this.trackPosition + travelled) % PERIMETER;
     if (this.fireCooldownMs > 0) this.fireCooldownMs -= deltaMs;
+
+    this.distanceSinceShot += travelled;
+    if (this.distanceSinceShot > PERIMETER && this.inFlight === 0) this.retire();
   }
 
   aim(): CannonAim {
@@ -68,7 +81,8 @@ export class ActiveCannon {
   /**
    * Ready to put a ball in the air. Note this says nothing about whether there
    * is anything to hit — that check belongs to the simulator, which owns the
-   * lane index, and is what stops a cannon wasting its stock on empty lanes.
+   * surface index, and is what stops a cannon firing at a colour it cannot
+   * reach.
    */
   canFire(): boolean {
     return !this.retired && this.fireCooldownMs <= 0 && this.inFlight < this.ammo;
@@ -77,6 +91,7 @@ export class ActiveCannon {
   onFired(): void {
     this.fireCooldownMs = this.fireIntervalMs;
     this.inFlight++;
+    this.distanceSinceShot = 0;
   }
 
   /** A ball found its target: the round is spent. */
