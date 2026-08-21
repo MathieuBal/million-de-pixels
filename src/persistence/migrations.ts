@@ -9,6 +9,7 @@ import {
   type LevelSaveV2,
   type LevelSaveV3,
   type LevelSaveV4,
+  type LevelSaveV5,
 } from "./schema";
 
 /**
@@ -28,6 +29,7 @@ export function migrate(save: AnyLevelSave): CurrentLevelSave {
   if (current.schemaVersion === 2) current = v2ToV3(current);
   if (current.schemaVersion === 3) current = v3ToV4(current);
   if (current.schemaVersion === 4) current = v4ToV5(current);
+  if (current.schemaVersion === 5) current = v5ToV6(current);
 
   if (current.schemaVersion !== SAVE_SCHEMA_VERSION) {
     throw new Error(
@@ -93,7 +95,7 @@ function v3ToV4(save: LevelSaveV3): LevelSaveV4 {
  * There is no observed destruction rate to inherit either, so the offline model
  * starts from zero and fills in as soon as the level is played again.
  */
-function v4ToV5(save: LevelSaveV4): CurrentLevelSave {
+function v4ToV5(save: LevelSaveV4): LevelSaveV5 {
   return {
     ...save,
     schemaVersion: 5,
@@ -109,6 +111,14 @@ function v4ToV5(save: LevelSaveV4): CurrentLevelSave {
   };
 }
 
+/**
+ * v6 counts the passes over an image. An older save is on its first one: it
+ * predates the very idea of finishing a level and starting over.
+ */
+function v5ToV6(save: LevelSaveV5): CurrentLevelSave {
+  return { ...save, schemaVersion: 6, completions: 0 };
+}
+
 function assertShape(save: CurrentLevelSave): void {
   const required: Array<keyof CurrentLevelSave> = [
     "baseColorId",
@@ -120,6 +130,7 @@ function assertShape(save: CurrentLevelSave): void {
     "cannons",
     "upgrades",
     "observedRateByColor",
+    "completions",
   ];
   for (const key of required) {
     if (save[key] === undefined || save[key] === null) {

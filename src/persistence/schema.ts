@@ -5,7 +5,7 @@ import type { UpgradeLevels } from "../progression/Upgrades";
 import type { CannonState } from "../combat/Cannon";
 import type { RngAlgorithm } from "../rng/XorShift32";
 
-export const SAVE_SCHEMA_VERSION = 5;
+export const SAVE_SCHEMA_VERSION = 6;
 
 /** Cannon state before the cannon was constrained to the board's edges. */
 export interface OrbitalCannonStateV1 {
@@ -94,10 +94,22 @@ export interface LevelSaveV5 extends RailSaveBase {
   observedRateByColor: number[];
 }
 
-export type CurrentLevelSave = LevelSaveV5;
+export interface LevelSaveV6 extends Omit<LevelSaveV5, "schemaVersion"> {
+  schemaVersion: 6;
+  /**
+   * Times this image has been cleared. A cleared image can be played again with
+   * everything bought still on the rail, so the count is what separates a first
+   * pass from a fifth — and it only ever moves on a real clear, never on a
+   * restart, or restarting would be a way to farm the same pixels twice.
+   */
+  completions: number;
+}
+
+export type CurrentLevelSave = LevelSaveV6;
 export type AnyLevelSave =
   | LevelSaveV1
   | LevelSaveV2
   | LevelSaveV3
   | LevelSaveV4
-  | LevelSaveV5;
+  | LevelSaveV5
+  | LevelSaveV6;

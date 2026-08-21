@@ -23,6 +23,7 @@ export class GameScreen {
 
   private readonly coinCount = document.getElementById("coin-count") as HTMLElement;
   private readonly levelLabel = document.getElementById("level-label") as HTMLElement;
+  private readonly passLabel = document.getElementById("round-label") as HTMLElement;
 
   private readonly aliveCount = document.getElementById("alive-count") as HTMLElement;
   private readonly playableCount = document.getElementById("playable-count") as HTMLElement;
@@ -86,6 +87,13 @@ export class GameScreen {
     this.levelLabel.textContent = label;
   }
 
+  /** The pass counter replaces the placeholder "Manche 1" of the mockup. */
+  private renderPass(): void {
+    const label = `Passage ${this.game.pass}`;
+    if (this.passLabel.textContent === label) return;
+    this.passLabel.textContent = label;
+  }
+
   /**
    * Reports the play area's size, but only when it changed since the last
    * call, so the renderer and camera are re-framed only then.
@@ -124,6 +132,7 @@ export class GameScreen {
     this.progressFill.style.width = `${(progress * 100).toFixed(2)}%`;
     this.progressPercent.textContent = formatPercent(progress);
 
+    this.renderPass();
     this.renderColorStats();
     this.renderSlots();
     this.renderCards();

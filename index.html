@@ -104,6 +104,10 @@
             <i></i>
             <span>l'image source n'est jamais stockée — seul le niveau quantifié l'est</span>
           </div>
+          <button id="resume-run" class="ghost-button" type="button" hidden>
+            <span class="label">Reprendre la partie en cours</span>
+            <span class="hint">rien n'a été perdu</span>
+          </button>
           <button id="start-run" class="cta" type="button" disabled>Lancer la partie</button>
         </div>
       </section>
@@ -118,6 +122,9 @@
             <span class="eyebrow" id="level-label">Image</span>
             <span id="round-label">Manche 1</span>
           </div>
+          <button id="menu" class="icon-button icon-menu" type="button" aria-label="Menu">
+            <i></i><i></i><i></i>
+          </button>
           <button id="pause" class="icon-button" type="button" aria-label="Pause">
             <i></i><i></i>
           </button>
@@ -168,6 +175,29 @@
             </div>
             <div id="upgrade-rows" class="upgrade-rows"></div>
             <button id="upgrade-close" class="cta" type="button">Reprendre</button>
+          </div>
+        </div>
+
+        <div id="run-menu" class="upgrade-panel" hidden>
+          <div class="upgrade-scrim" id="run-menu-scrim"></div>
+          <div class="panel run-menu-body">
+            <div class="upgrade-head">
+              <span class="title" id="run-menu-title">Partie</span>
+              <span class="balance"><i></i><span id="run-menu-pass">Passage 1</span></span>
+            </div>
+            <p class="run-menu-note" id="run-menu-note"></p>
+            <div class="run-menu-actions">
+              <button id="run-next" class="cta" type="button" hidden>Passage suivant</button>
+              <button id="run-restart" class="ghost-button" type="button">
+                <span class="label">Recommencer l'image</span>
+                <span class="hint">le plateau redevient entier — améliorations et fragments repartent de zéro</span>
+              </button>
+              <button id="run-change" class="ghost-button" type="button">
+                <span class="label">Changer d'image</span>
+                <span class="hint">la partie en cours est sauvegardée, tu pourras y revenir</span>
+              </button>
+            </div>
+            <button id="run-menu-close" class="cta" type="button">Reprendre</button>
           </div>
         </div>
 

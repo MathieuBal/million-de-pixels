@@ -57,6 +57,8 @@ export interface GameEvents {
   onLevelPrepared?: (palette: PaletteEntry[], colorId: Uint8Array, width: number) => void;
   onLevelReady?: (world: PixelWorld) => void;
   onMilestone?: (milestone: Milestone) => void;
+  /** The board is empty. Fired once per pass, the moment the last pixel goes. */
+  onLevelCleared?: (pass: number) => void;
   onOfflineReport?: (report: OfflineReport) => void;
   onError?: (message: string) => void;
 }
@@ -96,6 +98,10 @@ export class GameController {
   private fractionalCarry: number[] = [];
 
   private levelId = "level-1";
+  /** Times this image has been cleared. Zero on the first pass. */
+  private completions = 0;
+  /** Latched so clearing the board announces itself once, not every frame. */
+  private clearedAnnounced = false;
   private createdAtEpochMs = Date.now();
   private lastSimulatedAtEpochMs = Date.now();
 
@@ -120,6 +126,24 @@ export class GameController {
 
   getPhase(): GamePhase {
     return this.phase;
+  }
+
+  /** 1 on a fresh image, 2 after one clear, and so on. */
+  get pass(): number {
+    return this.completions + 1;
+  }
+
+  /** True once the last pixel of the current pass is gone. */
+  get isCleared(): boolean {
+    return this.world !== null && this.world.aliveTotal() === 0;
+  }
+
+  /**
+   * True while a level is set aside rather than finished — the player went back
+   * to the import screen and can still change their mind.
+   */
+  get canResume(): boolean {
+    return this.phase === "idle" && this.world !== null;
   }
 
   getWorld(): PixelWorld | null {
@@ -223,7 +247,78 @@ export class GameController {
     if (!this.prepared) return;
     const world = this.prepared;
     this.prepared = null;
+    this.completions = 0;
     this.startLevel(world);
+    this.saveDirty = true;
+    void this.save();
+  }
+
+  // --- Reprise, redémarrage, changement d'image ---------------------------
+
+  /**
+   * Sets the current level aside and shows the import screen.
+   *
+   * Nothing is torn down and nothing is deleted: the world stays in memory, the
+   * save stays in IndexedDB under its own level id, and `resume()` picks the run
+   * back up exactly where it stopped. Importing another image is what finally
+   * moves on — and even then the old level's record survives, because a new
+   * import writes under a new id rather than over the old one.
+   */
+  suspendForImport(): void {
+    if (this.phase !== "playing") return;
+    this.saveDirty = true;
+    void this.save();
+    this.setPhase("idle");
+  }
+
+  /** Comes back to the level `suspendForImport()` set aside. */
+  resume(): boolean {
+    if (!this.canResume) return false;
+    // The play area was hidden, so its size has to be measured again before the
+    // camera can frame anything.
+    this.needsFraming = true;
+    this.lastSimulatedAtEpochMs = Date.now();
+    this.setPhase("playing");
+    return true;
+  }
+
+  /**
+   * Puts the image back the way it was imported, and the player back at zero.
+   *
+   * Upgrades and fragments go with it. That is the point rather than a
+   * punishment: keeping them would make restarting a way to farm fragments off
+   * the same pixels over and over, since a destroyed pixel is a fragment and
+   * the board would hand out the same million again.
+   */
+  restartLevel(): boolean {
+    if (!this.world) return false;
+    this.completions = 0;
+    this.upgrades = new UpgradeState();
+    this.rebuildFromBaseImage();
+    return true;
+  }
+
+  /**
+   * Starts the next pass over a cleared image, keeping everything bought.
+   *
+   * This is the loop that makes an image worth finishing: the board comes back
+   * whole, but against a rail the player spent the whole previous pass
+   * building. Only reachable once the last pixel is gone, so the fragments a
+   * pass hands out have to be earned in full before they can be earned again.
+   */
+  startNextPass(): boolean {
+    if (!this.isCleared) return false;
+    this.completions++;
+    this.rebuildFromBaseImage();
+    return true;
+  }
+
+  private rebuildFromBaseImage(): void {
+    const world = this.world;
+    if (!world) return;
+
+    this.fractionalCarry = new Array(world.paletteSize).fill(0);
+    this.startLevel(world.restart());
     this.saveDirty = true;
     void this.save();
   }
@@ -235,6 +330,7 @@ export class GameController {
     this.teardownLevel();
 
     this.world = world;
+    this.clearedAnnounced = false;
     this.milestones = new MilestoneTracker(world.progress());
     this.stats = new ColorStats(world);
 
@@ -358,6 +454,13 @@ export class GameController {
     const crossed = this.milestones.update(this.world.progress());
     for (const milestone of crossed) this.events.onMilestone?.(milestone);
 
+    if (!this.clearedAnnounced && this.world.aliveTotal() === 0) {
+      this.clearedAnnounced = true;
+      this.saveDirty = true;
+      void this.save();
+      this.events.onLevelCleared?.(this.pass);
+    }
+
     this.profiler.recordFrame(deltaMs, simMs);
     this.profiler.recordCounters(
       nowMs,
@@ -406,6 +509,7 @@ export class GameController {
       loads: [...queue.visible],
       cannons: combat.activeCannons.map((cannon) => cannon.serialize()),
       upgrades: this.upgrades.serialize(),
+      completions: this.completions,
       // What the rail was actually producing, per colour, at the moment the
       // player left. The offline model runs on this rather than on a formula.
       observedRateByColor: this.stats?.ratesByColor() ?? [],
@@ -446,6 +550,7 @@ export class GameController {
     this.rng = new XorShift32(saved.rngState);
     this.fractionalCarry = saved.fractionalCarryByColor.slice();
     this.upgrades = UpgradeState.restore(saved.upgrades);
+    this.completions = saved.completions;
 
     const world = new PixelWorld(
       {

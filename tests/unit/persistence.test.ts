@@ -48,6 +48,7 @@ function makeSave(overrides: Partial<CurrentLevelSave> = {}): CurrentLevelSave {
       },
     ],
     observedRateByColor: [120, 45],
+    completions: 2,
     rngAlgorithm: RNG_ALGORITHM,
     rngState: 123456,
     fractionalCarryByColor: [0.25, 0.75],
@@ -81,6 +82,7 @@ describe("SaveRepository", () => {
     expect(loaded!.cannons[0].trackPosition).toBeCloseTo(1200, 10);
     expect(loaded!.upgrades.levels.vitesse).toBe(2);
     expect(loaded!.observedRateByColor).toEqual([120, 45]);
+    expect(loaded!.completions).toBe(2);
     expect(loaded!.upgrades.earned).toBe(5000);
   });
 
@@ -154,8 +156,19 @@ describe("save migration", () => {
     expect(migrated.upgrades.spent).toBe(0);
   });
 
+  it("puts a v5 save on its first pass", () => {
+    const { completions: _c, ...rest } = makeSave();
+    const migrated = migrate({ ...rest, schemaVersion: 5 } as never);
+
+    expect(migrated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+    expect(migrated.completions).toBe(0);
+    // Everything v5 already carried survives the step.
+    expect(migrated.observedRateByColor).toEqual([120, 45]);
+    expect(migrated.cannons[0].ammo).toBe(17);
+  });
+
   it("drops the fire cadence a v4 cannon carried", () => {
-    const { observedRateByColor: _r, ...rest } = makeSave();
+    const { observedRateByColor: _r, completions: _c, ...rest } = makeSave();
     const v4 = {
       ...rest,
       schemaVersion: 4 as const,

@@ -34,6 +34,7 @@ export class ImportScreen {
   private readonly paletteCount = document.getElementById("palette-count") as HTMLElement;
   private readonly swatches = document.getElementById("palette-swatches") as HTMLElement;
   private readonly cta = document.getElementById("start-run") as HTMLButtonElement;
+  private readonly resumeButton = document.getElementById("resume-run") as HTMLButtonElement;
 
   private readonly paletteSize = document.getElementById("palette-size") as HTMLInputElement;
   private readonly paletteValue = document.getElementById("palette-size-value") as HTMLOutputElement;
@@ -92,6 +93,18 @@ export class ImportScreen {
     this.root.hidden = false;
     this.rows.hidden = false;
     this.stagesList.hidden = true;
+  }
+
+  /**
+   * Offers the way back to a run set aside rather than finished. Hidden when
+   * there is nothing to come back to, so the screen stays a first-run screen.
+   */
+  setResumable(resumable: boolean): void {
+    this.resumeButton.hidden = !resumable;
+  }
+
+  onResume(handler: () => void): void {
+    this.resumeButton.addEventListener("click", handler);
   }
 
   hide(): void {
