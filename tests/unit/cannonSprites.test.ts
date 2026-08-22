@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   CANNON_TIERS,
   GAUGE_SPENT,
+  MUZZLE_MARKS,
   orient,
   paint,
   rotate,
+  spriteFor,
   tierFor,
 } from "../../src/rendering/CannonSprites";
 
@@ -145,6 +147,30 @@ describe("CannonSprites", () => {
         CANNON_TIERS[tier].rows.join("").split("").filter((c) => c === "m").length;
       expect(segments(1)).toBeGreaterThan(segments(0));
       expect(segments(2)).toBeGreaterThan(segments(1));
+    });
+  });
+
+  describe("gueules", () => {
+    it("keeps both readings on every marking", () => {
+      // A specialised cannon is still a cannon: it has to say what it aims at
+      // and how much it has left, or the marking has cost more than it gave.
+      for (const sprite of Object.values(MUZZLE_MARKS)) {
+        const flat = sprite.rows.join("");
+        expect(flat).toContain("c");
+        expect(flat).toContain("m");
+        for (const row of sprite.rows) expect(row).toHaveLength(sprite.width);
+      }
+    });
+
+    it("gives each specialisation a muzzle of its own", () => {
+      const tops = Object.values(MUZZLE_MARKS).map((s) => s.rows[0]);
+      expect(new Set(tops).size).toBe(tops.length);
+    });
+
+    it("wears the marking once a capability is owned, the tier otherwise", () => {
+      expect(spriteFor(40, null).rows).toEqual(CANNON_TIERS[0].rows);
+      expect(spriteFor(900, null).rows).toEqual(CANNON_TIERS[2].rows);
+      expect(spriteFor(900, "feu").rows).toEqual(MUZZLE_MARKS.feu.rows);
     });
   });
 

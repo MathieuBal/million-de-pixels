@@ -63,6 +63,7 @@ async function boot(): Promise<void> {
       gameScreen.renderCards();
     },
     onMilestone: (milestone) => gameScreen.announceMilestone(milestone),
+    onColorCleared: (colorId, count) => gameScreen.announceColorCleared(colorId, count),
     onLevelCleared: (_pass, reward) => runMenu.announceCleared(reward),
     onFinale: () =>
       gameScreen.notify("99,9 % — la toile se termine toute seule, munitions illimitées."),

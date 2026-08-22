@@ -2,10 +2,10 @@ import { Container, Particle, ParticleContainer, Texture } from "pixi.js";
 import type { CannonAim } from "../combat/Cannon";
 import { WORLD_HEIGHT, WORLD_WIDTH, type PaletteEntry } from "../core/constants";
 import {
-  CANNON_TIERS,
+  MUZZLE_MARKS,
   orient,
   paint,
-  tierFor,
+  spriteFor,
   type CannonLook,
 } from "./CannonSprites";
 
@@ -71,6 +71,8 @@ export class CannonRenderer {
 
   private palette: PaletteEntry[];
   private accent = 0xe8a13c;
+  /** The highest capability the profile owns, or null. */
+  private capability: keyof typeof MUZZLE_MARKS | null = null;
 
   constructor(palette: PaletteEntry[]) {
     this.palette = palette;
@@ -80,6 +82,11 @@ export class CannonRenderer {
 
   setPalette(palette: PaletteEntry[]): void {
     this.palette = palette;
+  }
+
+  /** Which marking the muzzles wear. Null is a cannon with no specialisation. */
+  setCapability(capability: keyof typeof MUZZLE_MARKS | null): void {
+    this.capability = capability;
   }
 
   /** Redraws the whole rail. Called once a frame; nothing is retained. */
@@ -127,8 +134,11 @@ export class CannonRenderer {
   }
 
   private drawSprite(cannon: CannonView, used: number, nowMs: number): number {
-    const tier = CANNON_TIERS[tierFor(cannon.maxAmmo)];
-    const oriented = orient(tier, cannon.aim.axis, cannon.aim.direction);
+    const oriented = orient(
+      spriteFor(cannon.maxAmmo, this.capability),
+      cannon.aim.axis,
+      cannon.aim.direction,
+    );
     const origin = this.originFor(cannon, oriented.width, oriented.height);
 
     const look: CannonLook = {

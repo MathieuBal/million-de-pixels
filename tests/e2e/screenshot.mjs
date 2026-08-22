@@ -61,12 +61,19 @@ try {
   if (process.env.SHOT_RAIL) {
     // Close in until a board cell is a handful of screen pixels: the cannon is
     // drawn at the board's own scale, so it is only legible when the board is.
-    await page.evaluate(() => {
+    await page.evaluate((withFx) => {
       const game = window.__game;
+      if (withFx) {
+        const meta = game.getMeta();
+        meta.recordClear({ playablePixels: 200_000_000, paletteSize: 8, awkwardColors: 5, pass: 1 });
+        for (const id of ["explosion", "foudre", "feu"]) meta.buy(id);
+        for (let i = 0; i < 400; i++) { meta.buy("explosionProc"); meta.buy("souffle"); }
+      }
       const cannon = game.getCombat().activeCannons[0];
       // Freeze the rail: at 260 cells a second it would be a third of the way
-      // round the board by the time the shutter opens.
-      for (const c of game.getCombat().activeCannons) c.tune(0);
+      // round the board by the time the shutter opens. With effects on, leave
+      // it crawling so something actually fires in frame.
+      for (const c of game.getCombat().activeCannons) c.tune(withFx ? 3 : 0);
       const aim = cannon?.aim();
       for (let i = 0; i < 8; i++) window.__controls.zoomIn();
       if (aim) {
@@ -76,7 +83,7 @@ try {
         game.viewport.centerY = aim.axis === "column" ? (aim.direction > 0 ? 6 : 1018) : aim.y;
       }
       game.applyViewport();
-    });
+    }, Boolean(process.env.SHOT_FX));
     await page.waitForTimeout(900);
     await page.screenshot({ path: OUT });
     await browser.close();

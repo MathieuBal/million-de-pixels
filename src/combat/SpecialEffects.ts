@@ -51,10 +51,27 @@ export const NO_EFFECTS: EffectLoadout = {
   fireSpread: 0,
 };
 
+/**
+ * The shape an effect left behind, for the renderer to trace.
+ *
+ * The three effects have to look different or they are one upgrade bought
+ * three times — a disc, a thin walk, a spreading front — and only the
+ * simulation knows which cells each one actually took, in which order. Passing
+ * the shape up costs nothing and stops the renderer from inventing a plausible
+ * one.
+ */
+export type EffectMark =
+  | { kind: "pierce"; from: number; to: number }
+  | { kind: "explode"; center: number; radius: number }
+  | { kind: "arc"; path: number[] }
+  | { kind: "burn"; path: number[] };
+
 export interface EffectOutcome {
   destroyed: number;
   /** Cell indices worth a spark, capped by the caller's appetite. */
   touched: number[];
+  /** What to draw. Empty when nothing fired. */
+  marks: EffectMark[];
   pierced: boolean;
   exploded: boolean;
   sparked: boolean;
@@ -92,6 +109,7 @@ export function resolveEffects(
   const outcome: EffectOutcome = {
     destroyed: 0,
     touched: [],
+    marks: [],
     pierced: false,
     exploded: false,
     sparked: false,
@@ -110,18 +128,34 @@ export function resolveEffects(
 
   if (killedIndex >= 0 && loadout.explosionChance > 0 && rng.nextFloat() < loadout.explosionChance) {
     outcome.exploded = explode(killedIndex, loadout.explosionRadius, spend);
+    if (outcome.exploded) {
+      outcome.marks.push({ kind: "explode", center: killedIndex, radius: loadout.explosionRadius });
+    }
   }
 
   if (killedIndex >= 0 && loadout.lightningChance > 0 && rng.nextFloat() < loadout.lightningChance) {
+    const before = outcome.touched.length;
     outcome.sparked = strike(world, colorId, killedIndex, loadout.lightningArcs, rng, spend);
+    if (outcome.sparked) {
+      outcome.marks.push({ kind: "arc", path: [killedIndex, ...outcome.touched.slice(before)] });
+    }
   }
 
   if (killedIndex >= 0 && loadout.fireChance > 0 && rng.nextFloat() < loadout.fireChance) {
+    const before = outcome.touched.length;
     outcome.burned = burn(world, colorId, killedIndex, loadout.fireSpread, spend);
+    if (outcome.burned) {
+      outcome.marks.push({ kind: "burn", path: [killedIndex, ...outcome.touched.slice(before)] });
+    }
   }
 
   if (loadout.pierceChance > 0 && rng.nextFloat() < loadout.pierceChance) {
+    const from = world.surface.frontIndex(aim.axis, aim.lane, aim.direction);
+    const before = outcome.touched.length;
     outcome.pierced = pierce(world, colorId, aim, loadout.pierceDepth, spend);
+    if (outcome.pierced && from >= 0) {
+      outcome.marks.push({ kind: "pierce", from, to: outcome.touched[before] });
+    }
   }
 
   return outcome;

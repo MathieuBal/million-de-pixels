@@ -430,6 +430,14 @@ html, body {
 .rail-token[data-dense="true"] { width: 7px; height: 7px; }
 /* A colour that has been circling without finding anything to peel. */
 .rail-token[data-idle="true"] { filter: saturate(0.15); }
+
+/* A milestone is the only announcement that gets the accent: everything else
+   is information, and information does not need to be loud. */
+.toast[data-kind="milestone"] {
+  border: 1px solid rgba(232, 161, 60, 0.5);
+  background: #1c1a15;
+  color: var(--accent);
+}
 .rail-token[data-empty="true"] { animation: blink 600ms steps(1) infinite; }
 @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.5; } }
 

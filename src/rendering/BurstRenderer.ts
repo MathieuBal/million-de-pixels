@@ -3,6 +3,7 @@ import type { PaletteEntry } from "../core/constants";
 import { WORLD_WIDTH } from "../core/constants";
 import type { ImpactEvent } from "../combat/CombatSimulator";
 import type { BurstEvent } from "../combat/LineBurst";
+import type { EffectMark } from "../combat/SpecialEffects";
 
 /**
  * Four square sparks per impact, one cell each, gone in 180 ms.
@@ -48,7 +49,26 @@ interface Tracer extends Fading {
 interface Spark extends Fading {
   vx: number;
   vy: number;
+  /** Frames to wait before showing. An arc appears one jump at a time. */
+  delayMs: number;
 }
+
+/**
+ * How long each specialisation's trace lingers.
+ *
+ * They differ on purpose. A pierce is a click; a blast is a thump; an arc
+ * crackles; a fire breathes. If they all faded over the same 200 ms the player
+ * would learn one effect instead of four.
+ */
+const PIERCE_LIFE_MS = 120;
+const EXPLODE_LIFE_MS = 140;
+const ARC_STEP_MS = 16;
+const ARC_LIFE_MS = 100;
+const BURN_STEP_MS = 22;
+const BURN_LIFE_MS = 400;
+
+/** Warm colours the fire keeps regardless of the colour it is eating. */
+const EMBER = 0xe2553f;
 
 /**
  * Everything the player actually sees of a burst: the lane it peeled, and
@@ -84,6 +104,7 @@ export class BurstRenderer {
   private readonly sparkPool: Particle[] = [];
   private readonly flashes: Fading[] = [];
   private readonly flashPool: Particle[] = [];
+  private readonly rings: Array<Fading & { radius: number }> = [];
 
   /**
    * A single white texel. Drawn at scale 1 it covers exactly one board cell,
@@ -203,9 +224,106 @@ export class BurstRenderer {
         const vy = i < 2 ? -SPARK_SPREAD : SPARK_SPREAD;
 
         this.sparkLayer.addParticle(particle);
-        this.sparks.push({ particle, lifeMs: 0, maxLifeMs: SPARK_LIFE_MS, vx, vy });
+        this.sparks.push({ particle, lifeMs: 0, maxLifeMs: SPARK_LIFE_MS, vx, vy, delayMs: 0 });
       }
     }
+  }
+
+  /**
+   * Traces what a specialisation left behind.
+   *
+   * The shape comes from the simulation, which is the only thing that knows
+   * which cells were actually taken and in which order. Drawing a plausible
+   * shape here instead would be the renderer inventing gameplay.
+   */
+  spawnEffects(marks: ReadonlyArray<{ mark: EffectMark; colorId: number }>): void {
+    for (const { mark, colorId } of marks) {
+      switch (mark.kind) {
+        case "pierce":
+          // A thin line through what it looked past, and nothing at the end:
+          // the cells it crossed are still standing, and must look it.
+          this.trace(mark.from, mark.to, 0xffffff, PIERCE_LIFE_MS, 1);
+          break;
+
+        case "explode": {
+          // A ring that opens: a square outline growing to the radius. It is
+          // the loudest effect, so it is the only one that also shakes.
+          const particle = this.takeSpark();
+          if (!particle) break;
+          particle.x = mark.center % WORLD_WIDTH;
+          particle.y = (mark.center / WORLD_WIDTH) | 0;
+          particle.scaleX = 1;
+          particle.scaleY = 1;
+          particle.color = this.packedColorOf(colorId, 200);
+          this.rings.push({
+            particle,
+            lifeMs: 0,
+            maxLifeMs: EXPLODE_LIFE_MS,
+            radius: Math.max(1, mark.radius),
+          });
+          break;
+        }
+
+        case "arc":
+          // One frame per jump: the polyline draws itself along the colour.
+          this.walk(mark.path, this.packedColorOf(colorId, 255), ARC_STEP_MS, ARC_LIFE_MS);
+          break;
+
+        case "burn":
+          // Embers keep their own colour: a fire is warm whatever it eats.
+          this.walk(mark.path, packRgb(EMBER, 235), BURN_STEP_MS, BURN_LIFE_MS);
+          break;
+      }
+    }
+  }
+
+  /** A one-cell-wide line between two board cells. */
+  private trace(from: number, to: number, rgb: number, lifeMs: number, width: number): void {
+    const fx = from % WORLD_WIDTH;
+    const fy = (from / WORLD_WIDTH) | 0;
+    const tx = to % WORLD_WIDTH;
+    const ty = (to / WORLD_WIDTH) | 0;
+
+    const particle = this.takeSpark();
+    if (!particle) return;
+
+    particle.x = (fx + tx) / 2;
+    particle.y = (fy + ty) / 2;
+    particle.scaleX = Math.max(width, Math.abs(tx - fx) + 1);
+    particle.scaleY = Math.max(width, Math.abs(ty - fy) + 1);
+    particle.color = packRgb(rgb, 220);
+    this.sparks.push({ particle, lifeMs: 0, maxLifeMs: lifeMs, vx: 0, vy: 0, delayMs: 0 });
+  }
+
+  /** Lights a path cell by cell, each one a step behind the last. */
+  private walk(path: readonly number[], color: number, stepMs: number, lifeMs: number): void {
+    for (let i = 0; i < path.length; i++) {
+      const particle = this.takeSpark();
+      if (!particle) return;
+
+      particle.x = path[i] % WORLD_WIDTH;
+      particle.y = (path[i] / WORLD_WIDTH) | 0;
+      particle.scaleX = 1;
+      particle.scaleY = 1;
+      particle.color = color;
+      this.sparks.push({
+        particle,
+        lifeMs: 0,
+        maxLifeMs: lifeMs,
+        vx: 0,
+        vy: 0,
+        delayMs: i * stepMs,
+      });
+    }
+  }
+
+  private takeSpark(): Particle | null {
+    if (this.sparks.length + this.rings.length >= this.maxSparks) return null;
+    const particle =
+      this.sparkPool.pop() ??
+      new Particle({ texture: this.dotTexture, anchorX: 0.5, anchorY: 0.5 });
+    this.sparkLayer.addParticle(particle);
+    return particle;
   }
 
   update(deltaMs: number): void {
@@ -245,8 +363,43 @@ export class BurstRenderer {
     }
     this.flashLayer.update();
 
+    // A ring opens rather than fades in place: the square outline grows to the
+    // radius the blast actually reached, so its size is the reading.
+    for (let i = this.rings.length - 1; i >= 0; i--) {
+      const ring = this.rings[i];
+      ring.lifeMs += deltaMs;
+
+      const t = ring.lifeMs / ring.maxLifeMs;
+      if (t >= 1) {
+        this.sparkLayer.removeParticle(ring.particle);
+        this.sparkPool.push(ring.particle);
+        this.rings[i] = this.rings[this.rings.length - 1];
+        this.rings.pop();
+        continue;
+      }
+
+      const size = 1 + ring.radius * 2 * t;
+      ring.particle.scaleX = size;
+      ring.particle.scaleY = size;
+      ring.particle.color = fadeAlpha(ring.particle.color, (1 - t) * 0.5);
+    }
+
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const spark = this.sparks[i];
+
+      // A delayed cell is held off screen until its turn: that is what makes an
+      // arc read as a walk rather than a shape appearing whole.
+      if (spark.delayMs > 0) {
+        spark.delayMs -= deltaMs;
+        spark.particle.scaleX = 0;
+        spark.particle.scaleY = 0;
+        continue;
+      }
+      if (spark.particle.scaleX === 0) {
+        spark.particle.scaleX = 1;
+        spark.particle.scaleY = 1;
+      }
+
       spark.lifeMs += deltaMs;
 
       const t = spark.lifeMs / spark.maxLifeMs;
@@ -283,6 +436,19 @@ export class BurstRenderer {
     // Texture.WHITE is shared and owned by Pixi: never destroy it here.
     this.view.destroy({ children: true });
   }
+}
+
+/**
+ * Packs a plain RGB into the ABGR word a particle expects.
+ *
+ * Particle colours are written as a raw u32 into a `unorm8x4` attribute, so on
+ * a little-endian machine the packing is ABGR, not ARGB.
+ */
+function packRgb(rgb: number, alpha: number): number {
+  const r = (rgb >> 16) & 0xff;
+  const g = (rgb >> 8) & 0xff;
+  const b = rgb & 0xff;
+  return (((alpha << 24) | (b << 16) | (g << 8) | r) >>> 0);
 }
 
 /** Rewrites only the alpha byte of a packed ABGR colour. */

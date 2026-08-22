@@ -175,6 +175,21 @@ d'être émis et le flash porte seul — un seuil dur, pas un budget à négocie
 simulation a déjà tout résolu quand le rendu s'exécute, et elle n'attend jamais
 une particule.
 
+**Le spectacle est rationné à ce qui est rare.** Chaque spécialisation a sa forme,
+et la forme vient de la simulation — seule elle sait quelles cases ont réellement
+été prises, et dans quel ordre. Perce trace une raie fine à travers ce qu'il a
+regardé par-dessus, sans rien laisser au bout : ce qu'il a traversé est toujours
+debout et doit en avoir l'air. Éclat ouvre un anneau jusqu'au rayon réellement
+atteint. Foudre allume sa polyligne un saut par frame. Incendie avance en front,
+en braises qui gardent leur chaleur quelle que soit la couleur mangée.
+
+La **secousse** est rationnée plus durement encore : un impact ordinaire ne
+secoue jamais — à des centaines par seconde le plateau ne serait jamais immobile,
+et un tremblement permanent n'est pas un effet mais un défaut. Elle est réservée
+à un éclat qui tombe, à une couleur qui s'épuise, à la finale. Une demande ne
+s'ajoute jamais à celle en cours : la plus forte gagne, deux éclats dans la même
+frame ne secouent pas deux fois plus.
+
 **Découplage morsure / spectacle.** Une morsure détruit instantanément : une bille
 qui voyagerait *après* la disparition du pixel serait un mensonge visuel, donc il
 n'y a plus de projectiles mobiles. `BurstRenderer` dessine des étincelles

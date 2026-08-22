@@ -82,6 +82,78 @@ export const CANNON_TIERS: CannonSprite[] = [
   ]),
 ];
 
+/**
+ * Muzzle markings, one per specialisation.
+ *
+ * A cannon that can pierce, blast, arc or burn does not look like one that
+ * cannot — the marking is on the muzzle because that is where the eye goes when
+ * a shot lands, and it is the only place a nine-cell sprite has room to say
+ * anything at all. Only the highest capability owned is shown: four markings at
+ * once would be four illegible ones.
+ */
+export const MUZZLE_MARKS: Record<"perce" | "eclat" | "foudre" | "feu", CannonSprite> = {
+  perce: sprite([
+    "....a....",
+    "....a....",
+    "...kak...",
+    "...kak...",
+    "..kkakk..",
+    ".kblalbk.",
+    "kbbcccbbk",
+    "kbmmmmmbk",
+    "kkkkkkkkk",
+  ]),
+  eclat: sprite([
+    "..k.a.k..",
+    "..kaaak..",
+    "...kak...",
+    "..kkakk..",
+    ".kblalbk.",
+    "kbbcccbbk",
+    "kbmmmmmbk",
+    "kkkkkkkkk",
+    ".d.....d.",
+  ]),
+  foudre: sprite([
+    "..a...a..",
+    "...a.a...",
+    "...kak...",
+    "..kkakk..",
+    ".kblalbk.",
+    "kbbcccbbk",
+    "kbmmmmmbk",
+    "kkkkkkkkk",
+    ".d.....d.",
+  ]),
+  feu: sprite([
+    "..a.a.a..",
+    "..kakak..",
+    "..kakak..",
+    "..kkakk..",
+    ".kblalbk.",
+    "kbbcccbbk",
+    "kbmmmmmbk",
+    "kkkkkkkkk",
+    ".d.....d.",
+  ]),
+};
+
+/**
+ * The sprite a cannon wears.
+ *
+ * The magazine decides the silhouette; the capability decides the muzzle. The
+ * two cannot both be shown — a wide base with a fire muzzle would need a sprite
+ * per pair — so the marking wins once one is owned, because what a cannon *can
+ * do* changes how a shot reads, and a wider base only says it carries more.
+ */
+export function spriteFor(
+  maxAmmo: number,
+  capability: keyof typeof MUZZLE_MARKS | null,
+): CannonSprite {
+  if (capability) return MUZZLE_MARKS[capability];
+  return CANNON_TIERS[tierFor(maxAmmo)];
+}
+
 /** Magazine sizes at which the silhouette changes. Opening values. */
 export const TIER_THRESHOLDS = [0, 300, 900];
 
