@@ -58,6 +58,30 @@ try {
     if (await card.count()) { await card.click(); await page.waitForTimeout(150); }
   }
   await page.waitForTimeout(1500);
+  if (process.env.SHOT_RAIL) {
+    // Close in until a board cell is a handful of screen pixels: the cannon is
+    // drawn at the board's own scale, so it is only legible when the board is.
+    await page.evaluate(() => {
+      const game = window.__game;
+      const cannon = game.getCombat().activeCannons[0];
+      // Freeze the rail: at 260 cells a second it would be a third of the way
+      // round the board by the time the shutter opens.
+      for (const c of game.getCombat().activeCannons) c.tune(0);
+      const aim = cannon?.aim();
+      for (let i = 0; i < 8; i++) window.__controls.zoomIn();
+      if (aim) {
+        // Centre on the board edge the cannon straddles, not on the aim point:
+        // the aim sits outside the board and the sprite hangs back from it.
+        game.viewport.centerX = aim.axis === "row" ? (aim.direction > 0 ? 6 : 1018) : aim.x;
+        game.viewport.centerY = aim.axis === "column" ? (aim.direction > 0 ? 6 : 1018) : aim.y;
+      }
+      game.applyViewport();
+    });
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
   if (process.env.SHOT_CLEAR) {
     await page.evaluate(() => {
       const world = window.__game.getWorld();

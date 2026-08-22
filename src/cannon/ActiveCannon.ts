@@ -124,6 +124,17 @@ export class ActiveCannon {
     this.retired = true;
   }
 
+  /**
+   * How far round it has gone without peeling anything, as a fraction of a lap.
+   *
+   * The rail reads this to grey a cannon out before it leaves: a colour buried
+   * from every side is the thing that stalls a run, and the player should see
+   * the cannon giving up rather than find it gone.
+   */
+  get idleFraction(): number {
+    return Math.min(1, this.distanceSinceBurst / PERIMETER);
+  }
+
   get isRetired(): boolean {
     return this.retired;
   }

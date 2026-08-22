@@ -148,6 +148,33 @@ exposée en une lecture, donc rien ne balaye la voie. La règle fondamentale ne
 bouge pas : **une munition détruit au plus un bloc**, et la première couleur
 étrangère arrête la morsure sans jamais être détruite.
 
+**Le canon est fait de la même matière que l'image.** Une case du sprite est une
+case du plateau, à la même échelle, donc il ne peut pas jurer avec la toile
+importée. Deux lectures doivent être gratuites : la **bande de couleur** en
+travers du socle dit ce qu'il vise, et la **jauge** juste en dessous dit ce qui
+reste — des segments qui s'éteignent, jamais un chiffre. Une munition n'est
+dépensée que sur un pixel réellement mort, donc la jauge ne peut pas mentir sur
+ce qui reste à peler.
+
+Trois silhouettes selon le chargeur acheté : c'est le seul retour d'amélioration
+qui n'a pas besoin d'un nombre. Le canon chevauche le rail — moitié dehors,
+moitié sur la première rangée de la voie qu'il s'apprête à peler — et pivote
+avec le côté qu'il longe. La rotation **ré-indexe la grille** au lieu
+d'interpoler : un coin se franchit en une frame, sans orientation intermédiaire
+qui étalerait les pixels. Une raie de 1 px court jusqu'à la première case solide
+de la voie : c'est la seule lecture honnête de sa portée. Au-delà de douze
+canons, les sprites se chevauchent en bouillie et le rail retombe sur des jetons
+compacts — la bande de couleur seule, la seule lecture qui tienne à cette
+densité.
+
+**Le tir ordinaire est sec.** C'est 99 % de ce que le joueur voit : un flash
+d'exactement une frame sur la case qui meurt, quatre éclats carrés d'une case
+qui s'éteignent en 180 ms, et rien d'autre. Pas de traînée, pas de poussière,
+pas de secousse. Au-delà de **400 impacts sur une frame**, les éclats cessent
+d'être émis et le flash porte seul — un seuil dur, pas un budget à négocier : la
+simulation a déjà tout résolu quand le rendu s'exécute, et elle n'attend jamais
+une particule.
+
 **Découplage morsure / spectacle.** Une morsure détruit instantanément : une bille
 qui voyagerait *après* la disparition du pixel serait un mensonge visuel, donc il
 n'y a plus de projectiles mobiles. `BurstRenderer` dessine des étincelles

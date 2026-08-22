@@ -179,9 +179,11 @@ export class GameScreen {
       const point = railPoint(cannon.trackPosition, rect.width, rect.height);
       token.style.left = `${point.x}px`;
       token.style.top = `${point.y}px`;
-      token.textContent = cannon.unlimited ? "∞" : `${cannon.ammo}/${cannon.maxAmmo}`;
       token.dataset.dense = String(dense);
       token.dataset.empty = String(!cannon.unlimited && cannon.ammo === 0);
+      token.dataset.idle = String(cannon.idleFraction > 0.75);
+      const palette = world.palette[cannon.colorId];
+      token.style.background = cssColor(palette.r, palette.g, palette.b);
     }
   }
 

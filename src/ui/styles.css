@@ -420,7 +420,16 @@ html, body {
   font-weight: 600;
   color: var(--accent);
 }
-.rail-token[data-dense="true"] { font-size: 0; padding: 0; width: 9px; height: 9px; }
+.rail-token {
+  font-size: 0;
+  padding: 0;
+  width: 11px;
+  height: 11px;
+  min-width: 0;
+}
+.rail-token[data-dense="true"] { width: 7px; height: 7px; }
+/* A colour that has been circling without finding anything to peel. */
+.rail-token[data-idle="true"] { filter: saturate(0.15); }
 .rail-token[data-empty="true"] { animation: blink 600ms steps(1) infinite; }
 @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0.5; } }
 

@@ -292,6 +292,20 @@ try {
   await page.locator("#upgrade-close").click();
 
 
+  // The rail is drawn as cells of the board: the sprites have to exist, and
+  // the aimed-lane streak with them. Counting them is the only check available
+  // — what they look like is a screenshot's job, not an assertion's.
+  const railParticles = await page.evaluate(() => {
+    const layers = window.__game.boardLayer.children[1].children;
+    return layers.map((c) => (c.particleChildren ?? []).filter((p) => p.scaleX > 0).length);
+  });
+  check(
+    "les canons sont dessines en cases du plateau",
+    railParticles[1] > 20,
+    `${railParticles[1]} cellules`,
+  );
+  check("la voie visee est tracee", railParticles[0] >= 1, `${railParticles[0]} voies`);
+
   console.log("\n— sorties de partie —");
   await page.locator("#menu").click();
   await page.waitForSelector("#run-menu:not([hidden])", { timeout: 10000 });

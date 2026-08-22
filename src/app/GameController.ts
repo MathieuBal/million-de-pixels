@@ -25,6 +25,7 @@ import { SAVE_SCHEMA_VERSION } from "../persistence/schema";
 import { PixelTextureRenderer } from "../rendering/PixelTextureRenderer";
 import { Viewport, type ScreenRect } from "../rendering/Viewport";
 import { BurstRenderer } from "../rendering/BurstRenderer";
+import { CannonRenderer } from "../rendering/CannonRenderer";
 import {
   DESKTOP_BUDGET,
   MOBILE_BUDGET,
@@ -101,6 +102,7 @@ export class GameController {
   private combat: CombatSimulator | null = null;
   private board: PixelTextureRenderer | null = null;
   private bursts: BurstRenderer | null = null;
+  private rail: CannonRenderer | null = null;
   private milestones = new MilestoneTracker();
   private stats: ColorStats | null = null;
   private upgrades = new UpgradeState();
@@ -446,8 +448,10 @@ export class GameController {
       uploadHz: this.lod.currentBudget.textureUploadHz,
     });
     this.bursts = new BurstRenderer(world.palette);
+    this.rail = new CannonRenderer(world.palette);
 
     this.boardLayer.addChild(this.board.mesh);
+    this.boardLayer.addChild(this.rail.view);
     this.boardLayer.addChild(this.bursts.view);
 
     // Balls are one cell across, so the level opens close enough for a
@@ -490,6 +494,11 @@ export class GameController {
       this.boardLayer.removeChild(this.bursts.view);
       this.bursts.destroy();
       this.bursts = null;
+    }
+    if (this.rail) {
+      this.boardLayer.removeChild(this.rail.view);
+      this.rail.destroy();
+      this.rail = null;
     }
     this.world?.onDestroy(null);
     this.combat = null;
@@ -547,8 +556,25 @@ export class GameController {
 
     const stats = this.combat.getStats();
 
-    this.bursts?.syncCannons(
-      this.combat.activeCannons.map((cannon) => ({ aim: cannon.aim(), colorId: cannon.colorId })),
+    // The rail reads the cannons as they are — position, stock, whether the
+    // lane in front of them holds anything — and draws them as cells of the
+    // board. Nothing here is interpolated: a corner is crossed in one frame.
+    const world = this.world;
+    this.rail?.sync(
+      this.combat.activeCannons.map((cannon) => {
+        const aim = cannon.aim();
+        return {
+          id: cannon.id,
+          aim,
+          colorId: cannon.colorId,
+          ammo: cannon.ammo,
+          maxAmmo: cannon.maxAmmo,
+          unlimited: cannon.unlimited,
+          idle: cannon.idleFraction > 0.75,
+          frontIndex: world.surface.frontIndex(aim.axis, aim.lane, aim.direction),
+        };
+      }),
+      nowMs,
     );
     this.bursts?.spawnBursts(this.combat.bursts);
     this.bursts?.spawnImpacts(this.combat.visibleImpacts);
