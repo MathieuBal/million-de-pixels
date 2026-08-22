@@ -577,7 +577,21 @@ export class GameController {
       // One per frame, not a loop: the rail should visibly fill rather than
       // blink from empty to full, and a slot that frees this frame is served
       // on the next one anyway.
-      const next = this.queue.visible[0];
+      //
+      // The first offer is the wrong one to take. Late in a toile some colours
+      // are buried behind others, and a cannon sent after one of those flies a
+      // whole lap, destroys nothing and comes back — so an automaton that always
+      // took slot one sent every cannon into the same wall. Measured on a toile
+      // that a player tapping around finished in twenty-nine minutes: the
+      // automaton was still at eighty-six percent after three hours, having
+      // launched the three shootable colours exactly zero times in the last ten
+      // minutes of it. It picks a colour something actually exposes, and only
+      // falls back to the first offer when nothing does.
+      const reachable = this.combat.reachableColors;
+      const offers = this.queue.visible;
+      const next =
+        (reachable ? offers.find((load) => reachable[load.colorId] !== false) : undefined) ??
+        offers[0];
       if (next && this.combat.hasFreeSlot) this.launch(next.id);
     }
 

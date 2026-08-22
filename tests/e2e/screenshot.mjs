@@ -93,9 +93,11 @@ try {
     await page.evaluate(() => {
       const meta = window.__game.getMeta();
       // A profile a few dozen toiles in: enough holes for the grid to read.
+      // The cube is four thousand hexes now, so a plausible profile fills a few
+      // hundred of them — sparse pages are the honest picture.
       let seed = 7;
       const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
-      for (let i = 0; i < 70; i++) {
+      for (let i = 0; i < 400; i++) {
         meta.library.record({
           r: Math.floor(rnd() * 256), g: Math.floor(rnd() * 256), b: Math.floor(rnd() * 256),
           count: Math.floor(rnd() * 90000),

@@ -128,6 +128,39 @@ une seule ligne ou une seule colonne. Le parcours se réduit alors à un balayag
 pas fixe — l'index de cellule avance d'une constante (±1 sur une ligne, ±1024 sur
 une colonne), sans flottant ni terme incrémental dans la boucle.
 
+**L'étal ne peut pas se figer.** Une case est découpée quand le plateau est
+grand et garde le stock avec lequel elle l'a été ; le plateau rétrécit ensuite
+sous elle. Sans garde-fou, les billes promises à l'étal convergent vers les
+billes qui existent — mesuré à 90 % de toile nettoyée, étal amélioré à cent
+cases : **100 910 billes engagées contre 102 049 pixels vivants**. Le générateur
+ne peut alors plus rien tirer, l'offre cesse de tourner, et si les couleurs sur
+lesquelles elle s'est figée sont enterrées derrière d'autres, la toile ne peut
+plus être finie du tout — quatre-vingt-dix minutes sans une seule cellule
+détruite, avec un million de pixels de munitions dans les cases.
+
+Trois pièces le rendent impossible :
+
+- **`QUEUE_SHARE = 0,5`** — l'étal ne peut jamais se voir promettre plus de la
+  moitié d'une couleur vivante. Un canon déjà sur le rail n'est pas concerné : il
+  dépense ses billes, il ne les stocke pas.
+- **Le tirage connaît l'accessibilité.** Une couleur que rien n'expose garde un
+  dixième de sa part — pas zéro, parce qu'elle est à une cellule près d'être
+  tirable et qu'une file qui l'aurait oubliée mettrait plusieurs tirages à s'en
+  apercevoir.
+- **Une case périmée est redécoupée**, une par seconde : celle dont la couleur
+  est enterrée, sinon celle dont le stock dépasse le plus ce qu'on lui donnerait
+  aujourd'hui. Une par appel, parce que déplacer une case sous le doigt du joueur
+  est le bug qu'on venait de corriger.
+
+Et **l'Automate ne prend plus la première case**. Tard dans une toile certaines
+couleurs sont enterrées ; un canon lancé sur l'une d'elles fait un tour complet,
+ne détruit rien et revient. Un automate qui prenait toujours la case 1 envoyait
+donc tous ses canons dans le même mur : sur une toile qu'un joueur qui tape au
+hasard finit en 22 minutes, il en était encore à 86 % après trois heures, ayant
+lancé les trois couleurs tirables exactement zéro fois dans les dix dernières
+minutes. Il choisit une couleur que quelque chose expose, et ne retombe sur la
+première case que si rien ne l'est. Après correction : **54 minutes**.
+
 **Le rail est l'horloge.** Chaque voie franchie est une occasion de traitement :
 le travail d'un canon vaut exactement la distance qu'il a parcourue. Il n'y a plus
 de cadence. Une cadence fixe plafonnait la production à `1000 / intervalle` quelle
@@ -364,11 +397,25 @@ parce que c'est exactement ce qu'ils sont : de l'état de profil.
 
 ### Le nuancier
 
-Deux cent seize teintes — chaque canal ramené à l'un de six niveaux, ce qui donne
-les hexadécimaux `#000000`, `#003366`, `#FF6699`… Ce nombre *est* l'intérêt : une
-collection a besoin d'un dénominateur. Des valeurs exactes donneraient des
-milliers d'entrées presque identiques et un livre sans dernière page, ce qui est
-l'inverse de ce à quoi sert une collection.
+**Quatre mille quatre-vingt-seize teintes** — chaque canal ramené à l'un de seize
+niveaux (`0x00`, `0x11`, … `0xFF`), donc une teinte d'ici est exactement une
+notation CSS à trois chiffres écrite en toutes lettres : `#000000`, `#1166FF`,
+`#FFEE33`. La taille *est* l'intérêt : un livre qu'une douzaine d'images
+remplirait est une liste de courses ; un livre de cette taille est une raison
+d'aller chercher une image dont on n'a jamais épuisé les couleurs. Une toile
+porte huit à seize couleurs, donc elle déplace le compteur de quelques dixièmes
+de pour cent — elle grignote la grille, elle ne la valide jamais.
+
+Le cube se lit en **seize planches**, une par niveau de rouge, chacune un carré
+de 16 × 16 en vert contre bleu. C'est ce qui empêche quatre mille pastilles
+d'être un mur de bruit : une planche est une page, assez petite pour être finie,
+et un trou dedans dit « va chercher une image plus chaude » comme aucun nombre ne
+le ferait.
+
+Les six niveaux de l'ancienne grille web-safe sont tous des multiples de `0x11`,
+donc toute teinte cataloguée avant cet élargissement en est encore une. Rien
+n'est perdu, aucune sauvegarde n'a besoin de migration — le même livre a
+simplement plus de pages.
 
 Une teinte est cataloguée quand une couleur qui s'y rattache est **épuisée
 entièrement** — le seul moment d'une partie qui soit indiscutablement fini : la
@@ -376,16 +423,21 @@ case quitte l'étal, un goulot se résout, le compteur touche zéro et y reste.
 Cataloguer chaque couleur dont un pixel a été pris remplirait la grille dans les
 trente premières secondes de la première toile.
 
-Chaque teinte paie **+0,15 % de fragments et de production hors-ligne**, à vie.
-La bibliothèque est un relevé de travail déjà fait : la payer en puissance de
-combat en ferait un deuxième arbre d'améliorations sans aucun de ses choix. Une
-grille pleine vaut +32 % sur les deux — réel, et jamais la raison de jouer.
+Chaque teinte paie **+0,05 % de fragments et de production hors-ligne**, à vie,
+et chaque **planche terminée +2 %**. La bibliothèque est un relevé de travail
+déjà fait : la payer en puissance de combat en ferait un deuxième arbre
+d'améliorations sans aucun de ses choix. Cinquante images de jeu ordinaire
+cataloguent quelques centaines de teintes, soit environ +15 % — à prendre, jamais
+à courir après. Le cube plein vaudrait +205 %, et personne ne le verra : une
+collection a plus besoin d'une dernière page que d'une page atteignable. Le
+compte par teinte est volontairement trop petit pour se sentir une par une —
+c'est la planche qui porte la collection, deux cent cinquante-six nuances
+voisines et un nombre au bout.
 
-La grille se lit en douze colonnes : les six niveaux de bleu d'un même couple
-rouge-vert tiennent sur une ligne et demie, donc les couleurs voisines restent
-ensemble et un trou dans les rouges se voit comme un trou. La pastille montre le
-**spécimen tel qu'il était sur le plateau**, pas la valeur de grille sous
-laquelle il a été classé.
+Une planche se lit en seize colonnes, le carré qu'elle est : une ligne par niveau
+de vert, le bleu qui court dessus, et un trou se voit comme un trou. La pastille
+montre le **spécimen tel qu'il était sur le plateau**, pas la valeur de grille
+sous laquelle il a été classé.
 
 ### Le confort se gagne
 

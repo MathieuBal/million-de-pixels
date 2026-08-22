@@ -15,7 +15,15 @@ import {
   type MetaUpgradeDefinition,
   type MetaUpgradeId,
 } from "../progression/MetaProgression";
-import { HEX_BONUS, LIBRARY_HEXES, LIBRARY_SIZE } from "../progression/ColorLibrary";
+import {
+  HEX_BONUS,
+  LIBRARY_SIZE,
+  PLANE_BONUS,
+  PLANE_COUNT,
+  PLANE_SIZE,
+  hexesOfPlane,
+  planeLabel,
+} from "../progression/ColorLibrary";
 import { formatCount } from "./format";
 
 /** Axes shown as shortcuts in the bottom row — all four of them. */
@@ -51,6 +59,8 @@ export class UpgradePanel {
 
   private boosterSignature = "";
   private tab: "level" | "permanent" | "library" = "level";
+  /** Which page of the colour book is open. */
+  private libraryPlane = 0;
   /** Which family of the shop, or which branch of the tree, is on screen. */
   private family: UpgradeFamily = "rail";
   private branch: MetaBranch = "racine";
@@ -343,13 +353,21 @@ export class UpgradePanel {
   }
 
   /**
-   * The colour book: two hundred and sixteen hexes, and how many are yours.
+   * The colour book: four thousand and ninety-six hexes, read one page at a
+   * time.
    *
    * A grid rather than a list, because the shape of what is missing is the
-   * information — a hole in the reds says "go find a warm image" far better
-   * than a number would. Each hex is catalogued by clearing a colour that snaps
-   * to it, and pays passively for the rest of the profile's life: work already
-   * finished, rewarded quietly, never the reason to play.
+   * information — a hole in the warm greens says "go find another picture" far
+   * better than a number would. The whole cube at once would be four thousand
+   * swatches on a phone and a wall of noise besides, so it is shown as sixteen
+   * planes of two hundred and fifty-six: one red level per page, green down and
+   * blue across. A page is small enough to finish, which is where the collecting
+   * actually happens — the per-hex trickle is deliberately too small to feel one
+   * at a time.
+   *
+   * Each hex is catalogued by clearing a colour that snaps to it, and pays
+   * passively for the rest of the profile's life: work already finished,
+   * rewarded quietly, never the reason to play.
    */
   private renderLibrary(): void {
     const library = this.game.getMeta().library;
@@ -357,19 +375,51 @@ export class UpgradePanel {
 
     const head = document.createElement("div");
     head.className = "upgrade-family";
-    head.textContent = `${library.discovered} / ${LIBRARY_SIZE} teintes`;
+    head.textContent = `${library.discovered} / ${LIBRARY_SIZE} teintes · ${library.completePlanes} / ${PLANE_COUNT} planches`;
     this.rows.appendChild(head);
 
     const note = document.createElement("p");
     note.className = "tree-note";
     note.textContent =
       `+${((bonus.fragmentMultiplier - 1) * 100).toFixed(1)} % de fragments et de production ` +
-      `hors-ligne · ${(HEX_BONUS * 100).toFixed(2)} % par teinte`;
+      `hors-ligne · ${(HEX_BONUS * 100).toFixed(2)} % par teinte, ` +
+      `${(PLANE_BONUS * 100).toFixed(0)} % par planche complète`;
     this.rows.appendChild(note);
+
+    // The pages, with their own progress on them: which one to open next is the
+    // only decision this screen offers, so it has to be answerable at a glance.
+    const pages = document.createElement("div");
+    pages.className = "hex-pages";
+    for (let plane = 0; plane < PLANE_COUNT; plane++) {
+      const { found } = library.planeProgress(plane);
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "hex-page";
+      tab.dataset.active = String(plane === this.libraryPlane);
+      // The bar is the plane's own red, warmed just enough that the darkest
+      // page still shows a bar rather than a gap in the strip.
+      const red = plane * 17;
+      tab.style.setProperty("--page-tint", `rgb(${Math.max(28, red)}, ${red * 0.16}, ${red * 0.16})`);
+      tab.textContent = planeLabel(plane);
+      tab.title = `${planeLabel(plane)} — ${found} / ${PLANE_SIZE}`;
+      tab.setAttribute("aria-label", `Planche ${planeLabel(plane)}, ${found} sur ${PLANE_SIZE}`);
+      tab.addEventListener("click", () => {
+        this.libraryPlane = plane;
+        this.renderPanel();
+      });
+      pages.appendChild(tab);
+    }
+    this.rows.appendChild(pages);
+
+    const { found } = library.planeProgress(this.libraryPlane);
+    const pageHead = document.createElement("p");
+    pageHead.className = "tree-note";
+    pageHead.textContent = `Planche ${planeLabel(this.libraryPlane)} — ${found} / ${PLANE_SIZE}`;
+    this.rows.appendChild(pageHead);
 
     const grid = document.createElement("div");
     grid.className = "hex-grid";
-    for (const hex of LIBRARY_HEXES) {
+    for (const hex of hexesOfPlane(this.libraryPlane)) {
       const specimen = library.specimen(hex);
       const cell = document.createElement("div");
       cell.className = "hex-cell";

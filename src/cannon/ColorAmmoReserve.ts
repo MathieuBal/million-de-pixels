@@ -21,6 +21,25 @@ export interface ColorAmmoState {
   assignable: number;
 }
 
+/**
+ * The most of a colour the étal may hold at once, as a share of what is alive.
+ *
+ * Half, and it is not a tuning knob so much as the thing that keeps the offer
+ * alive. Loads are cut when the board is large and keep the stock they were cut
+ * with; the board then shrinks under them. Without a ceiling the rounds promised
+ * to the queue converge on the rounds that exist — measured at ninety percent
+ * cleared, with the étal upgraded to a hundred slots: a hundred thousand rounds
+ * committed against a hundred and two thousand living pixels. From there
+ * `reserveForQueue` can grant nothing, so no slot can ever be re-cut, and the
+ * player is left tapping a frozen offer of whatever colours it happened to
+ * freeze on. Keeping half of every colour uncommitted means there is always
+ * something to draw, so the offer always turns over.
+ *
+ * A cannon already on the rail is not bound by this: it is spending its rounds,
+ * not sitting on them.
+ */
+export const QUEUE_SHARE = 0.5;
+
 export class ColorAmmoReserve {
   readonly paletteSize: number;
 
@@ -60,18 +79,36 @@ export class ColorAmmoReserve {
     return out;
   }
 
+  /**
+   * Rounds the étal may still be promised for this colour.
+   *
+   * `assignable` minus the share reserved for the offer to keep turning over.
+   * A colour down to its last pixels still yields one round, or it would drop
+   * out of the queue entirely while it is still on the board.
+   */
+  queueable(colorId: number): number {
+    const assignable = this.assignable(colorId);
+    if (assignable <= 0) return 0;
+    const ceiling = Math.floor(this.alive(colorId) * QUEUE_SHARE) - this.queued[colorId];
+    // A colour with nothing queued yet is always worth one round, however few
+    // pixels it has left: the alternative is a colour still on the board that
+    // the étal is structurally unable to offer.
+    const room = this.queued[colorId] === 0 ? Math.max(1, ceiling) : ceiling;
+    return Math.max(0, Math.min(assignable, room));
+  }
+
   /** Colours that can still supply a load. */
   availableColors(): number[] {
     const out: number[] = [];
     for (let colour = 0; colour < this.paletteSize; colour++) {
-      if (this.assignable(colour) > 0) out.push(colour);
+      if (this.queueable(colour) > 0) out.push(colour);
     }
     return out;
   }
 
   /** Promises rounds to a queued load. Returns what was actually granted. */
   reserveForQueue(colorId: number, amount: number): number {
-    const granted = Math.min(amount, this.assignable(colorId));
+    const granted = Math.min(amount, this.queueable(colorId));
     this.queued[colorId] += granted;
     return granted;
   }

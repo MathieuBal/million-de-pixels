@@ -78,6 +78,16 @@ export const MAX_ACTIVE_CANNONS = 5;
 export const FINALE_THRESHOLD = 0.999;
 
 /**
+ * How often the palette's reachability is re-read, and one stale offer re-cut.
+ *
+ * A second, for two reasons that pull the same way: the answer changes on the
+ * scale of a cannon's lap, not a frame, and re-cutting an offer moves a tile —
+ * so it must be rare enough that a finger already on its way down effectively
+ * never meets one.
+ */
+export const REACHABILITY_INTERVAL_MS = 1000;
+
+/**
  * Drives the cannons currently on the rail.
  *
  * **The rail is the clock.** Every lane a cannon crosses is an opportunity, so
@@ -115,6 +125,17 @@ export class CombatSimulator {
   private readonly options: Required<CombatOptions>;
   private finale = false;
 
+  /**
+   * When the reachability of the palette was last read, and what it said.
+   *
+   * `reachableColors()` is four thousand surface lookups at worst and usually
+   * far fewer, but it answers a question that changes slowly — a colour does not
+   * surface and bury itself between two frames — so once a second is plenty and
+   * sixty times a second would be waste.
+   */
+  private reachable: boolean[] | null = null;
+  private reachableAtMs = -Infinity;
+
   private stats: CombatStats = {
     activeCannons: 0,
     lanesExamined: 0,
@@ -141,6 +162,14 @@ export class CombatSimulator {
       biteDepth: options.biteDepth ?? BITE_DEPTH,
       blastRadius: options.blastRadius ?? 0,
     };
+  }
+
+  /**
+   * Which colours a cannon could hit right now, as of the last time it was
+   * read — about once a second. Null before the first frame.
+   */
+  get reachableColors(): readonly boolean[] | null {
+    return this.reachable;
   }
 
   get activeCannons(): readonly ActiveCannon[] {
@@ -322,6 +351,17 @@ export class CombatSimulator {
     // to queued loads, and leaving them there would break
     // `queued + active <= alive` for a frame.
     this.queue.dropExhausted();
+
+    // What the queue is allowed to offer depends on what a cannon could
+    // actually hit, and the answer only matters near the end of a toile — but
+    // that is exactly where the game used to strand the player. See
+    // `CannonQueue.recycleUnreachable`.
+    if (nowMs - this.reachableAtMs >= REACHABILITY_INTERVAL_MS) {
+      this.reachableAtMs = nowMs;
+      this.reachable = this.world.reachableColors();
+      this.queue.setReachable(this.reachable);
+      this.queue.recycleStale(this.reachable);
+    }
 
     // A cannon that leaves the rail with rounds unspent gives them back to its
     // colour, and nothing else in the game refills the queue: `take()` needs a
