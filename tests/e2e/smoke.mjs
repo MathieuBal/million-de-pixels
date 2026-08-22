@@ -150,9 +150,15 @@ try {
   await page.waitForTimeout(100);
 
   console.log("\n— ameliorations —");
-  // Bank fragments first: the shop is funded by destruction, so it needs the
-  // rail to have actually been working.
-  await page.waitForTimeout(12000);
+  // Bank fragments first: the shop is funded by destruction, so the rail has to
+  // be kept fed rather than left to empty itself. A cannon that spent its stock
+  // leaves, and an idle rail earns nothing — which made this section depend on
+  // which colours the draw happened to offer in one six-second window.
+  for (let i = 0; i < 30; i++) {
+    const button = page.locator("#cards button:not([disabled])").first();
+    if ((await button.count()) > 0) await button.click();
+    await page.waitForTimeout(600);
+  }
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });

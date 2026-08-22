@@ -471,6 +471,9 @@ html, body {
 .cards button:hover:not(:disabled) { filter: brightness(1.08); }
 .cards button:active:not(:disabled) { transform: scale(0.98); }
 .cards button:disabled { opacity: 0.4; cursor: not-allowed; }
+/* An empty slot keeps the row's shape rather than letting it collapse. */
+.cards button[data-empty="true"] { opacity: 0.28; }
+.cards button[data-empty="true"] .tile { background: var(--slot-empty); }
 .cards .tile {
   display: flex;
   align-items: center;

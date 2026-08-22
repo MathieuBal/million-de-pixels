@@ -47,7 +47,6 @@ export class GameScreen {
 
   private toastTimer = 0;
   private lastSampleMs = 0;
-  private cardSignature = "";
   private lastArea = "";
 
   constructor(private readonly game: GameController) {
@@ -241,37 +240,78 @@ export class GameScreen {
    * The colour cards. Rebuilt only when the offer actually changes — doing it
    * four times a second would tear a button out from under a tap.
    */
+  /**
+   * The offers, patched in place.
+   *
+   * This used to rebuild the whole row on every change, which tore the button
+   * out from under a finger mid-tap — and because the queue shifted its offers
+   * left when one was taken, the tile that arrived under that finger was a
+   * different colour. Spamming the row sent colours nobody asked for.
+   *
+   * Now a slot is a fixed place on screen with a fixed DOM node and a fixed
+   * click handler that reads the slot's *current* load. Nothing moves; only the
+   * face of a tile changes.
+   */
   renderCards(): void {
     const queue = this.game.getQueue();
     const world = this.game.getWorld();
     const combat = this.game.getCombat();
     if (!queue || !world) return;
 
+    const positions = queue.positions;
     const canLaunch = combat?.hasFreeSlot ?? false;
-    const signature = `${canLaunch}|${queue.visible.map((l) => `${l.id}:${l.ammo}`).join(",")}`;
-    if (signature === this.cardSignature) return;
-    this.cardSignature = signature;
 
-    this.cards.replaceChildren();
-    for (const load of queue.visible) {
+    while (this.cards.childElementCount < positions.length) {
+      this.cards.appendChild(this.makeCard(this.cards.childElementCount));
+    }
+    while (this.cards.childElementCount > positions.length) {
+      this.cards.lastElementChild!.remove();
+    }
+
+    for (let slot = 0; slot < positions.length; slot++) {
+      const button = this.cards.children[slot] as HTMLButtonElement;
+      const load = positions[slot];
+
+      if (!load) {
+        // An empty slot stays a slot: the row keeps its shape while the
+        // generator has nothing left to offer.
+        button.dataset.empty = "true";
+        button.disabled = true;
+        button.title = "En attente d'une couleur disponible";
+        (button.querySelector(".tile") as HTMLElement).textContent = "";
+        (button.querySelector(".tile") as HTMLElement).style.background = "";
+        (button.querySelector(".name") as HTMLElement).textContent = "";
+        continue;
+      }
+
       const palette = world.palette[load.colorId];
       const exhausted = world.aliveByColor(load.colorId) === 0;
 
-      const button = document.createElement("button");
-      button.type = "button";
-      button.disabled = !canLaunch || exhausted;
+      button.dataset.empty = "false";
       button.dataset.exhausted = String(exhausted);
+      button.disabled = !canLaunch || exhausted;
       button.title = `Lancer un canon #${load.colorId} chargé de ${load.ammo} billes`;
-      button.innerHTML =
-        `<span class="tile" style="background:${cssColor(palette.r, palette.g, palette.b)};` +
-        `color:${inkOn(palette.r, palette.g, palette.b)}">${load.ammo}</span>` +
-        `<span class="name">#${load.colorId}</span>`;
-      button.addEventListener("click", () => {
-        this.game.launch(load.id);
-        this.renderCards();
-      });
-      this.cards.appendChild(button);
+
+      const tile = button.querySelector(".tile") as HTMLElement;
+      tile.textContent = String(load.ammo);
+      tile.style.background = cssColor(palette.r, palette.g, palette.b);
+      tile.style.color = inkOn(palette.r, palette.g, palette.b);
+      (button.querySelector(".name") as HTMLElement).textContent = `#${load.colorId}`;
     }
+  }
+
+  private makeCard(slot: number): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.innerHTML = '<span class="tile"></span><span class="name"></span>';
+    // The handler reads the slot, never a captured load: the node outlives
+    // whatever happens to be sitting in it.
+    button.addEventListener("click", () => {
+      const load = this.game.getQueue()?.positions[slot];
+      if (load) this.game.launch(load.id);
+      this.renderCards();
+    });
+    return button;
   }
 
   private renderDebug(): void {
