@@ -5,6 +5,7 @@ import { WORLD_HEIGHT, WORLD_WIDTH } from "../core/constants";
 import { PaletteBoard } from "./PaletteBoard";
 import { QueueTools } from "./QueueTools";
 import { UpgradePanel } from "./UpgradePanel";
+import { RARITY_GLYPHS } from "../core/constants";
 import { cssColor, formatCompact, formatCount, formatPercent, inkOn } from "./format";
 
 /** Colour blocks shown under the progress bar. The full table lives in debug. */
@@ -286,17 +287,30 @@ export class GameScreen {
 
       const palette = world.palette[load.colorId];
       const exhausted = world.aliveByColor(load.colorId) === 0;
+      // Four readings, in the order they matter: gone, full rail, short stock,
+      // and whether the Trieuse asked for this colour.
+      const short = load.ammo < this.game.getUpgrades().effects().ammoPerLoad;
+      const state = exhausted ? "gone" : !canLaunch ? "full" : short ? "short" : "open";
 
       button.dataset.empty = "false";
       button.dataset.exhausted = String(exhausted);
+      button.dataset.state = state;
+      button.dataset.target = String(this.game.queueFilter === load.colorId);
       button.disabled = !canLaunch || exhausted;
-      button.title = `Lancer un canon #${load.colorId} chargé de ${load.ammo} billes`;
+      button.title = exhausted
+        ? `#${load.colorId} — couleur épuisée`
+        : !canLaunch
+          ? "Tous les emplacements du rail sont pris"
+          : short
+            ? `#${load.colorId} — la couleur n'a plus assez de pixels pour un chargeur plein`
+            : `Lancer un canon #${load.colorId} chargé de ${load.ammo} billes`;
 
       const tile = button.querySelector(".tile") as HTMLElement;
       tile.textContent = String(load.ammo);
       tile.style.background = cssColor(palette.r, palette.g, palette.b);
       tile.style.color = inkOn(palette.r, palette.g, palette.b);
-      (button.querySelector(".name") as HTMLElement).textContent = `#${load.colorId}`;
+      (button.querySelector(".name") as HTMLElement).innerHTML =
+        `#${load.colorId}<i>${RARITY_GLYPHS[palette.rarity]}</i>`;
     }
   }
 
@@ -304,6 +318,7 @@ export class GameScreen {
     const button = document.createElement("button");
     button.type = "button";
     button.innerHTML = '<span class="tile"></span><span class="name"></span>';
+    button.dataset.state = "open";
     // The handler reads the slot, never a captured load: the node outlives
     // whatever happens to be sitting in it.
     button.addEventListener("click", () => {

@@ -29,6 +29,18 @@
   --accent: #e8a13c;
   --accent-ink: #17140d;
 
+  /*
+   * Two currencies, two colours, and never both leading on the same surface.
+   * Amber is the colour of acting during a run — the cannon, the shop, the
+   * fragments a pixel pays. Blue belongs to what happens between images:
+   * another time, another currency, éclats. Blue never leads in game; it only
+   * ever appears to remind the player of a balance they cannot spend there.
+   */
+  --meta: #8fb2ff;
+  --meta-ink: #0d1220;
+  --reach: #6de5b0;
+  --danger: #e2553f;
+
   --line: rgba(255, 255, 255, 0.06);
   --line-2: rgba(255, 255, 255, 0.08);
   --rail: rgba(232, 161, 60, 0.28);
@@ -471,6 +483,15 @@ html, body {
 .cards button:hover:not(:disabled) { filter: brightness(1.08); }
 .cards button:active:not(:disabled) { transform: scale(0.98); }
 .cards button:disabled { opacity: 0.4; cursor: not-allowed; }
+/*
+ * The offer's four states. A full rail is not the same as an exhausted colour
+ * and neither is the same as a colour too thin to fill a magazine — the tile
+ * has to say which, because all three end with a tap that does nothing.
+ */
+.cards button[data-state="full"] { filter: saturate(0.35); }
+.cards button[data-state="short"] .tile { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35); }
+.cards button[data-target="true"] { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cards .name i { font-style: normal; margin-left: 3px; opacity: 0.7; }
 /* An empty slot keeps the row's shape rather than letting it collapse. */
 .cards button[data-empty="true"] { opacity: 0.28; }
 .cards button[data-empty="true"] .tile { background: var(--slot-empty); }
@@ -657,7 +678,7 @@ html, body {
   color: var(--text);
   font-weight: 600;
 }
-.reward-total b { color: var(--accent); font-size: 16px; }
+.reward-total b { color: var(--meta); font-size: 16px; }
 
 .run-menu-note { font-size: 13px; color: var(--muted); line-height: 1.45; }
 .run-menu-note:empty { display: none; }
@@ -705,45 +726,96 @@ html, body {
 .tool-toggle[hidden] { display: none; }
 .tool-toggle[data-on="true"] { border-color: var(--accent); color: var(--accent); }
 
-/* The palette board: every colour of the toile, and what can still be hit. */
-.palette-board { padding: 8px var(--screen-pad) 0; }
+/*
+ * The palette board. Three columns, because sixteen colours have to fit without
+ * scrolling — that is the framing constraint, not a preference.
+ */
+.palette-board {
+  position: absolute;
+  inset: 13px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px;
+  border-radius: 11px;
+  background: rgba(11, 11, 14, 0.94);
+  border: 1px solid var(--line-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .palette-board[hidden] { display: none; }
 .palette-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
-  max-height: 148px;
-  overflow-y: auto;
-  overscroll-behavior: contain;
 }
 .palette-cell {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 7px 8px;
-  border-radius: 9px;
+  gap: 5px;
+  padding: 8px;
+  border-radius: 11px;
   background: var(--card);
   border: 1px solid var(--line);
 }
 .palette-cell .swatch {
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 22px;
+  justify-content: space-between;
+  padding: 0 6px;
+  height: 28px;
   border-radius: 6px;
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
 }
-.palette-cell .count { font-family: var(--mono); font-size: 13px; color: var(--text-2); }
+.palette-cell .swatch i { font-style: normal; opacity: 0.85; }
+.palette-cell .count { font-family: var(--mono); font-size: 13px; color: var(--text); }
 .palette-cell .tag { font-size: 10px; color: var(--muted-2); }
-/* Reachable now, buried behind another colour, or gone: the three states the
-   whole game turns on, and the only ones worth colouring differently. */
-.palette-cell[data-state="open"] { border-color: var(--accent); }
-.palette-cell[data-state="open"] .tag { color: var(--accent); }
-.palette-cell[data-state="buried"] { opacity: 0.72; }
-.palette-cell[data-state="gone"] { opacity: 0.35; }
-.palette-cell[data-state="gone"] .swatch { filter: grayscale(1); }
+
+/* The border says the state before the text does. */
+.palette-cell[data-state="open"] { border-color: rgba(109, 229, 176, 0.28); }
+.palette-cell[data-state="open"] .tag { color: var(--reach); }
+/* Loudest of the three on purpose: it is the state that explains a counter
+   refusing to move, and the one that makes Perce worth buying. */
+.palette-cell[data-state="buried"] { border-color: rgba(226, 85, 63, 0.45); }
+.palette-cell[data-state="buried"] .tag { color: var(--danger); }
+.palette-cell[data-state="gone"] { opacity: 0.45; border-color: var(--line); }
+.palette-cell[data-state="gone"] .swatch { filter: saturate(0.1); }
+.palette-cell[data-state="gone"] .count,
+.palette-cell[data-state="gone"] .tag { color: var(--muted-3); }
+
+.palette-legend { display: flex; gap: 12px; font-size: 10px; color: var(--muted-2); }
+.palette-legend span { display: flex; align-items: center; gap: 5px; }
+.palette-legend span::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+}
+.palette-legend span[data-state="open"] { color: var(--reach); }
+.palette-legend span[data-state="buried"] { color: var(--danger); }
+.palette-legend span[data-state="gone"] { color: var(--muted-3); }
+
+/* Need against effort: the gap between the two bars is the whole reading. */
+.palette-gaps { display: flex; flex-direction: column; gap: 4px; }
+.palette-gaps[hidden] { display: none; }
+.gap-row { display: flex; align-items: center; gap: 8px; }
+.gap-row .chip { width: 20px; height: 20px; border-radius: 5px; flex: 0 0 auto; }
+.gap-row .bars { position: relative; flex: 1; height: 14px; }
+.gap-row .bars i {
+  position: absolute;
+  left: 0;
+  height: 3px;
+  border-radius: 2px;
+  min-width: 2px;
+}
+.gap-row .bars .need { top: 2px; background: var(--muted-3); }
+.gap-row .bars .out { bottom: 2px; background: var(--accent); }
+.gap-row .gap { font-family: var(--mono); font-size: 11px; color: var(--danger); }
+.gap-row[data-starved="false"] .gap { color: var(--reach); }
 
 .upgrade-batch { display: flex; gap: 6px; }
 .batch-button {
@@ -779,6 +851,15 @@ html, body {
   cursor: pointer;
 }
 .upgrade-tab[data-active="true"] { border-color: var(--accent); color: var(--text); }
+/* The permanent tab is the other currency's surface: one accent per screen. */
+.upgrade-tab[data-tab="permanent"][data-active="true"] { border-color: var(--meta); }
+.upgrade-panel[data-tab="permanent"] .batch-button[data-active="true"] {
+  border-color: var(--meta);
+  color: var(--meta);
+}
+.upgrade-panel[data-tab="permanent"] .upgrade-row[data-kind="unlock"] { border-color: rgba(143, 178, 255, 0.4); }
+.upgrade-panel[data-tab="permanent"] .price:not(:disabled) { background: rgba(143, 178, 255, 0.16); color: var(--meta); }
+.upgrade-panel[data-tab="permanent"] .chip { color: var(--meta); }
 /* An unlock reads as a door, a point node as a dial. */
 .upgrade-row[data-kind="unlock"] { border: 1px solid var(--line-2); border-radius: 12px; padding: 6px 8px; }
 .upgrade-row[data-kind="unlock"] .meta { line-height: 1.35; }
@@ -791,7 +872,7 @@ html, body {
   text-transform: uppercase;
   color: var(--muted-2);
 }
-.upgrade-head .balance .shards { margin-left: 10px; color: var(--accent); font-weight: 700; }
+.upgrade-head .balance .shards { margin-left: 10px; color: var(--meta); font-weight: 700; }
 /* The panel now carries a dozen axes across two tabs: it has to scroll. */
 .upgrade-rows { max-height: 46vh; overflow-y: auto; overscroll-behavior: contain; }
 

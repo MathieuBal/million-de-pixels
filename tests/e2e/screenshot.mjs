@@ -69,6 +69,20 @@ try {
     await page.waitForSelector("#run-menu:not([hidden])", { timeout: 15000 });
     await page.waitForTimeout(400);
   }
+  if (process.env.SHOT_PALETTE) {
+    await page.evaluate(() => {
+      const meta = window.__game.getMeta();
+      meta.recordClear({ playablePixels: 60_000_000, paletteSize: 8, awkwardColors: 5, pass: 1 });
+      meta.buy("nuancier");
+      meta.buy("filtre");
+    });
+    await page.waitForTimeout(900);
+    await page.locator("#palette-toggle").click();
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
   if (process.env.SHOT_TREE) {
     await page.evaluate(() => {
       const meta = window.__game.getMeta();

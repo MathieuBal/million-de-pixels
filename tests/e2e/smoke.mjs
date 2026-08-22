@@ -454,6 +454,24 @@ async function checkPaletteBoard(browser, fixture) {
     states.includes("open"),
     states.join(" "),
   );
+  check(
+    "il montre aussi ce qui est enterré — l'état qui explique un compteur bloqué",
+    states.includes("buried"),
+  );
+  check("il ne pousse pas le plateau hors de la mise en page", await (async () => {
+    const board = await page.locator("#play-area").boundingBox();
+    return Boolean(board) && board.height > 150;
+  })());
+
+  // The offers say why a tap would do nothing, rather than just not working.
+  const offerStates = await page.$$eval("#cards button", (nodes) =>
+    nodes.map((n) => n.dataset.state),
+  );
+  check(
+    "les cases annoncent leur état",
+    offerStates.every((s) => ["open", "short", "full", "gone"].includes(s)),
+    offerStates.join(" "),
+  );
 
   await ctx.close();
 }

@@ -121,6 +121,9 @@ export class UpgradePanel {
     for (const tab of Array.from(this.tabs.children) as HTMLElement[]) {
       tab.dataset.active = String(tab.dataset.tab === this.tab);
     }
+    // The whole sheet switches accent with the tab: amber is the currency of
+    // acting during a run, blue is what happens between images.
+    this.panel.dataset.tab = this.tab;
   }
 
   open(tab: "level" | "permanent" = this.tab): void {
