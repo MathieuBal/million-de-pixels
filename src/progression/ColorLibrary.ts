@@ -163,6 +163,27 @@ export class ColorLibrary {
     return { found, total: PLANE_SIZE };
   }
 
+  /**
+   * The page worth opening: the one holding the most catalogued hexes.
+   *
+   * Opening on plane zero every time meant that a player who had just finished
+   * a toile opened the book on an empty page, because the image's colours
+   * happened to live on other red levels. The grid's job is to show what the
+   * profile has; it should not have to be searched for first.
+   */
+  get fullestPlane(): number {
+    let best = 0;
+    let bestFound = -1;
+    for (let plane = 0; plane < PLANE_COUNT; plane++) {
+      const { found } = this.planeProgress(plane);
+      if (found > bestFound) {
+        bestFound = found;
+        best = plane;
+      }
+    }
+    return best;
+  }
+
   /** Planes with every hex catalogued. */
   get completePlanes(): number {
     let complete = 0;

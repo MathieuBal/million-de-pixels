@@ -156,6 +156,24 @@ describe("ColorLibrary", () => {
       );
     });
 
+    it("ouvre sur une planche qui a quelque chose à montrer", () => {
+      // Le livre s'ouvrait toujours sur la planche zéro. Une toile finie dont
+      // les couleurs vivent sur d'autres niveaux de rouge laissait donc le
+      // joueur devant une page vide — l'inverse de ce à quoi sert la grille.
+      const library = new ColorLibrary();
+      expect(library.fullestPlane).toBe(0);
+
+      library.record({ r: 0xdd, g: 0x55, b: 0x44, count: 10 });
+      library.record({ r: 0xdd, g: 0x11, b: 0x22, count: 10 });
+      library.record({ r: 0x33, g: 0x33, b: 0x33, count: 10 });
+
+      const plane = library.fullestPlane;
+      expect(planeLabel(plane)).toBe("R DD");
+      expect(library.planeProgress(plane).found).toBe(2);
+      // Et la page ouverte contient bien des teintes cataloguées.
+      expect(hexesOfPlane(plane).filter((hex) => library.has(hex))).toHaveLength(2);
+    });
+
     it("découpe le cube en planches lisibles", () => {
       expect(hexesOfPlane(0)).toHaveLength(PLANE_SIZE);
       expect(new Set(hexesOfPlane(0)).size).toBe(PLANE_SIZE);

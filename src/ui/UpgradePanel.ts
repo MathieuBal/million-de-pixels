@@ -59,8 +59,8 @@ export class UpgradePanel {
 
   private boosterSignature = "";
   private tab: "level" | "permanent" | "library" = "level";
-  /** Which page of the colour book is open. */
-  private libraryPlane = 0;
+  /** Which page of the colour book is open. Null until the panel picks one. */
+  private libraryPlane: number | null = null;
   /** Which family of the shop, or which branch of the tree, is on screen. */
   private family: UpgradeFamily = "rail";
   private branch: MetaBranch = "racine";
@@ -372,6 +372,9 @@ export class UpgradePanel {
   private renderLibrary(): void {
     const library = this.game.getMeta().library;
     const bonus = library.bonus();
+    // First look lands where there is something to see, not on plane zero.
+    this.libraryPlane ??= library.fullestPlane;
+    const openPlane = this.libraryPlane;
 
     const head = document.createElement("div");
     head.className = "upgrade-family";
@@ -395,7 +398,7 @@ export class UpgradePanel {
       const tab = document.createElement("button");
       tab.type = "button";
       tab.className = "hex-page";
-      tab.dataset.active = String(plane === this.libraryPlane);
+      tab.dataset.active = String(plane === openPlane);
       // The bar is the plane's own red, warmed just enough that the darkest
       // page still shows a bar rather than a gap in the strip.
       const red = plane * 17;
@@ -411,15 +414,15 @@ export class UpgradePanel {
     }
     this.rows.appendChild(pages);
 
-    const { found } = library.planeProgress(this.libraryPlane);
+    const { found } = library.planeProgress(openPlane);
     const pageHead = document.createElement("p");
     pageHead.className = "tree-note";
-    pageHead.textContent = `Planche ${planeLabel(this.libraryPlane)} — ${found} / ${PLANE_SIZE}`;
+    pageHead.textContent = `Planche ${planeLabel(openPlane)} — ${found} / ${PLANE_SIZE}`;
     this.rows.appendChild(pageHead);
 
     const grid = document.createElement("div");
     grid.className = "hex-grid";
-    for (const hex of hexesOfPlane(this.libraryPlane)) {
+    for (const hex of hexesOfPlane(openPlane)) {
       const specimen = library.specimen(hex);
       const cell = document.createElement("div");
       cell.className = "hex-cell";

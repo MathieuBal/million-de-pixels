@@ -464,13 +464,27 @@ async function checkClearReward(browser, fixture) {
   // pays passively from then on.
   await page.locator('#upgrade-tabs button[data-tab="library"]').click();
   await page.waitForTimeout(300);
+  // The cube is read one page at a time, so the visible cells are a plane, not
+  // the whole book: the total to check is the counter's, and what a cleared
+  // toile catalogued is counted there too.
   const cells = await page.locator(".hex-cell").count();
-  const found = await page.locator('.hex-cell[data-found="true"]').count();
-  check("le nuancier a un total", cells === 216, `${cells} teintes`);
+  const pages = await page.locator(".hex-page").count();
+  const head = await page.locator("#upgrade-rows .upgrade-family").first().innerText();
+  const libraryTotal = Number(head.match(/\/\s*(\d+)/)?.[1] ?? 0);
+  const catalogued = Number(head.match(/^\s*(\d+)/)?.[1] ?? 0);
+
+  check("le nuancier a un total", libraryTotal === 4096, `${libraryTotal} teintes`);
+  check("il se lit une planche à la fois", cells === 256 && pages === 16, `${cells} cases, ${pages} planches`);
   check(
     "terminer une toile en catalogue",
-    found > 0 && found <= 8,
-    `${found} teintes sur ${cells}`,
+    catalogued > 0 && catalogued <= 8,
+    `${catalogued} teintes sur ${libraryTotal}`,
+  );
+  // And the page it opens on is one that has something on it — landing on an
+  // empty plane after a clear is the same as showing nothing at all.
+  check(
+    "il s'ouvre sur une planche qui a quelque chose à montrer",
+    (await page.locator('.hex-cell[data-found="true"]').count()) > 0,
   );
   check(
     "il n'y a ni onglet de famille ni lot sur cette page",
