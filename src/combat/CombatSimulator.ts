@@ -32,8 +32,12 @@ export interface CombatOptions {
   maxActiveCannons?: number;
   /** Rail speed handed to every cannon, including the ones not launched yet. */
   moveSpeed?: number;
-  /** Pierce, explosion and lightning. All zero is the plain game. */
+  /** Pierce, explosion, lightning and fire. All zero is the plain game. */
   effects?: EffectLoadout;
+  /** Chance a crossing takes a second cell off the same lane. */
+  doubleBiteChance?: number;
+  /** Chance a launched load puts two cannons on the rail instead of one. */
+  twinChance?: number;
   /**
    * Rolls the effect chances. Its own generator, never the world's: sharing one
    * would make the offline catch-up's draws depend on how many shots happened
@@ -124,6 +128,8 @@ export class CombatSimulator {
       maxActiveCannons: options.maxActiveCannons ?? MAX_ACTIVE_CANNONS,
       moveSpeed: options.moveSpeed ?? CANNON_MOVE_SPEED,
       effects: options.effects ?? NO_EFFECTS,
+      doubleBiteChance: options.doubleBiteChance ?? 0,
+      twinChance: options.twinChance ?? 0,
       rng: options.rng ?? new XorShift32(0x5eed_1234),
       biteDepth: options.biteDepth ?? BITE_DEPTH,
       blastRadius: options.blastRadius ?? 0,
@@ -150,6 +156,12 @@ export class CombatSimulator {
   /** Pushes the bought specialisations onto the rail. */
   setEffects(effects: EffectLoadout): void {
     this.options.effects = effects;
+  }
+
+  /** The two chance-based axes: a second bite, and a second cannon. */
+  setChances(doubleBite: number, twin: number): void {
+    this.options.doubleBiteChance = Math.max(0, Math.min(1, doubleBite));
+    this.options.twinChance = Math.max(0, Math.min(1, twin));
   }
 
   /**
@@ -243,8 +255,29 @@ export class CombatSimulator {
     const load = this.queue.take(loadId);
     if (!load) return null;
 
-    // New cannons enter opposite the busiest stretch of rail, so they spread
-    // out instead of stacking on top of each other.
+    // Jumeau: the load leaves as two cannons carrying half its stock each.
+    // Splitting rather than duplicating is what keeps the ledger honest — the
+    // rounds were already promoted to the rail when the tile was taken, and
+    // inventing a second full stock would put a colour above its own pixels.
+    // What it buys is coverage: two positions on the rail for one tile.
+    const twin =
+      this.options.twinChance > 0 &&
+      load.ammo >= 2 &&
+      this.cannons.length + 2 <= this.options.maxActiveCannons &&
+      this.options.rng.nextFloat() < this.options.twinChance;
+
+    if (twin) {
+      const half = Math.floor(load.ammo / 2);
+      const first = this.spawn({ ...load, ammo: load.ammo - half });
+      this.spawn({ ...load, id: `${load.id}-b`, ammo: half });
+      return first;
+    }
+
+    return this.spawn(load);
+  }
+
+  /** Puts one cannon on the rail, opposite the busiest stretch of it. */
+  private spawn(load: CannonLoad): ActiveCannon {
     const cannon = new ActiveCannon(load, this.nextEntryPosition(), {
       moveSpeed: this.options.moveSpeed,
     });
@@ -333,6 +366,23 @@ export class CombatSimulator {
         this.settle(cannon, burst.destroyed);
         this.stats.bursts++;
         this.stats.destroyed += burst.destroyed;
+
+        // Salve: the same crossing bites again. It spends a round like any
+        // other block, so the ledger does not move — what it buys is a second
+        // cell out of one pass, not free ammunition.
+        if (
+          this.options.doubleBiteChance > 0 &&
+          !cannon.isFinished() &&
+          this.options.rng.nextFloat() < this.options.doubleBiteChance
+        ) {
+          const again = resolveLaneBurst(this.world, cannon, aim, this.options.biteDepth);
+          if (again.destroyed > 0) {
+            this.settle(cannon, again.destroyed);
+            this.stats.destroyed += again.destroyed;
+            burst.destroyed += again.destroyed;
+            burst.lastIndex = again.lastIndex;
+          }
+        }
       }
 
       // The specialisations run on every crossing, not only the productive

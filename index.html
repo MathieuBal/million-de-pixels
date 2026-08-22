@@ -140,6 +140,18 @@
           </div>
           <div id="rail-tokens" class="rail-tokens"></div>
 
+          <!-- Read over the board rather than above it: a panel you open, look
+               at and close must not push the plateau out of the layout. -->
+          <div id="palette-board" class="palette-board" hidden>
+            <div id="palette-grid" class="palette-grid"></div>
+            <div class="palette-legend">
+              <span data-state="open">à portée</span>
+              <span data-state="buried">enterrée</span>
+              <span data-state="gone">épuisée</span>
+            </div>
+            <div id="palette-gaps" class="palette-gaps" hidden></div>
+          </div>
+
           <div id="zoom-controls" class="zoom">
             <button id="zoom-in" type="button" title="Zoomer">+</button>
             <output id="zoom-level">×1</output>
@@ -161,10 +173,6 @@
         </div>
 
         <div id="slots" class="slots"></div>
-
-        <div id="palette-board" class="palette-board" hidden>
-          <div id="palette-grid" class="palette-grid"></div>
-        </div>
 
         <div id="queue-tools" class="queue-tools" hidden>
           <button id="palette-toggle" class="tool-toggle" type="button" hidden>
@@ -191,6 +199,7 @@
               </span>
             </div>
             <div id="upgrade-tabs" class="upgrade-tabs"></div>
+            <div id="upgrade-batch" class="upgrade-batch"></div>
             <div id="upgrade-rows" class="upgrade-rows"></div>
             <button id="upgrade-close" class="cta" type="button">Reprendre</button>
           </div>

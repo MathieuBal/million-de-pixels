@@ -27,6 +27,19 @@ export const RARITY_THRESHOLDS: Array<{ minShare: number; rarity: ColorRarity }>
   { minShare: 0, rarity: "exotique" },
 ];
 
+/**
+ * One character per tier, for the offer tiles and the palette board.
+ *
+ * A word would not fit on a tile and a colour swatch cannot carry the
+ * information — the swatch is already saying which colour it is.
+ */
+export const RARITY_GLYPHS: Record<ColorRarity, string> = {
+  commune: "·",
+  "peu-commune": ":",
+  rare: "∷",
+  exotique: "✦",
+};
+
 export function rarityOf(share: number): ColorRarity {
   for (const tier of RARITY_THRESHOLDS) {
     if (share >= tier.minShare) return tier.rarity;

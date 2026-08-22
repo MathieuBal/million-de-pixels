@@ -42,8 +42,12 @@ export class UpgradePanel {
   private readonly shardBalance = document.getElementById("upgrade-shards") as HTMLElement;
   private readonly tabs = document.getElementById("upgrade-tabs") as HTMLElement;
 
+  private readonly batchRow = document.getElementById("upgrade-batch") as HTMLElement;
+
   private boosterSignature = "";
   private tab: "level" | "permanent" = "level";
+  /** How many levels a click buys. `max` is "as many as the balance allows". */
+  private batch: 1 | 10 | "max" = 1;
 
   constructor(private readonly game: GameController) {
     for (const [id, label] of [
@@ -64,6 +68,21 @@ export class UpgradePanel {
     }
     this.syncTabs();
 
+    for (const size of [1, 10, "max"] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "batch-button";
+      button.dataset.size = String(size);
+      button.textContent = size === "max" ? "max" : `×${size}`;
+      button.addEventListener("click", () => {
+        this.batch = size;
+        this.syncBatch();
+        this.renderPanel();
+      });
+      this.batchRow.appendChild(button);
+    }
+    this.syncBatch();
+
     for (const id of BOOSTER_ROW) {
       const definition = UPGRADES.find((u) => u.id === id)!;
       const button = document.createElement("button");
@@ -82,15 +101,35 @@ export class UpgradePanel {
     this.scrim.addEventListener("click", () => this.hide());
   }
 
+  private syncBatch(): void {
+    for (const button of Array.from(this.batchRow.children) as HTMLElement[]) {
+      button.dataset.active = String(button.dataset.size === String(this.batch));
+    }
+  }
+
+  /** How many levels the current batch would buy of `id`, and for how much. */
+  private quote(
+    id: UpgradeDefinition["id"],
+  ): { levels: number; price: number } {
+    const upgrades = this.game.getUpgrades();
+    return this.batch === "max"
+      ? upgrades.costOf(id, Number.MAX_SAFE_INTEGER)
+      : upgrades.costOf(id, this.batch);
+  }
+
   private syncTabs(): void {
     for (const tab of Array.from(this.tabs.children) as HTMLElement[]) {
       tab.dataset.active = String(tab.dataset.tab === this.tab);
     }
+    // The whole sheet switches accent with the tab: amber is the currency of
+    // acting during a run, blue is what happens between images.
+    this.panel.dataset.tab = this.tab;
   }
 
   open(tab: "level" | "permanent" = this.tab): void {
     this.tab = tab;
     this.syncTabs();
+    this.syncBatch();
     this.panel.hidden = false;
     this.renderPanel();
   }
@@ -178,16 +217,24 @@ export class UpgradePanel {
       text.className = "text";
       text.innerHTML =
         `<span class="name">${definition.label} · niv. ${level}</span>` +
-        `<span class="meta">${current}${next}</span>`;
+        `<span class="meta">${current}${next}</span>` +
+        `<span class="what">${definition.description}</span>`;
+
+      const quote = maxed ? { levels: 0, price: 0 } : this.quote(definition.id);
+      const batched = quote.levels > 1;
 
       const button = document.createElement("button");
       button.className = "price";
       button.type = "button";
-      button.disabled = maxed || !upgrades.canAfford(definition.id);
-      button.textContent = maxed ? "max" : formatCount(price);
+      button.disabled = maxed || quote.levels === 0;
+      button.innerHTML = maxed
+        ? "max"
+        : quote.levels === 0
+          ? formatCount(price)
+          : `${formatCount(quote.price)}${batched ? `<small>×${quote.levels}</small>` : ""}`;
       button.title = maxed ? "Niveau maximum atteint" : definition.description;
       button.addEventListener("click", () => {
-        if (this.game.buyUpgrade(definition.id)) this.renderPanel();
+        if (this.game.buyUpgrade(definition.id, Math.max(1, quote.levels))) this.renderPanel();
       });
 
       row.append(chip, text, button);
@@ -251,23 +298,38 @@ export class UpgradePanel {
     chip.textContent = definition.glyph;
 
     const current = definition.format(definition.valueAt(points));
+    const step = unlock ? 0 : this.batch === "max" ? meta.affordableLevels(definition.id) : this.batch;
+    const quote = unlock
+      ? { levels: 0, price: 0 }
+      : meta.costOf(definition.id, Math.max(1, step));
     const next =
-      maxed || unlock ? "" : ` → ${definition.format(definition.valueAt(points + 1))}`;
+      maxed || unlock || quote.levels === 0
+        ? ""
+        : ` → ${definition.format(definition.valueAt(points + quote.levels))}`;
 
     const text = document.createElement("span");
     text.className = "text";
     text.innerHTML =
       `<span class="name">${definition.label}${unlock ? "" : ` · ${points} pt`}</span>` +
-      `<span class="meta">${unlock ? definition.description : `${current}${next}`}</span>`;
+      `<span class="meta">${unlock ? "" : `${current}${next}`}</span>` +
+      `<span class="what">${definition.description}</span>`;
 
+    const batched = quote.levels > 1;
     const button = document.createElement("button");
     button.className = "price";
     button.type = "button";
-    button.disabled = maxed || !meta.canAfford(definition.id);
-    button.textContent = owned ? "acquis" : maxed ? "max" : `${formatCount(price)} ◆`;
+    button.disabled = maxed || (!unlock && quote.levels === 0) || (unlock && !meta.canAfford(definition.id));
+    button.innerHTML = owned
+      ? "acquis"
+      : maxed
+        ? "max"
+        : unlock || quote.levels === 0
+          ? `${formatCount(price)} ◆`
+          : `${formatCount(quote.price)} ◆${batched ? `<small>×${quote.levels}</small>` : ""}`;
     button.title = definition.description;
     button.addEventListener("click", () => {
-      if (this.game.buyMetaUpgrade(definition.id as MetaUpgradeId)) this.renderPanel();
+      const id = definition.id as MetaUpgradeId;
+      if (this.game.buyMetaUpgrade(id, unlock ? 1 : Math.max(1, quote.levels))) this.renderPanel();
     });
 
     row.append(chip, text, button);

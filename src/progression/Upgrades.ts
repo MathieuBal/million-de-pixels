@@ -4,7 +4,15 @@ import { VISIBLE_LOADS } from "../cannon/CannonQueue";
 import { MAX_ACTIVE_CANNONS } from "../combat/CombatSimulator";
 import { NO_PERMANENT_BONUS, type PermanentBonus } from "./MetaProgression";
 
-export type UpgradeId = "vitesse" | "canons" | "munitions" | "cases" | "gain" | "veille";
+export type UpgradeId =
+  | "vitesse"
+  | "canons"
+  | "munitions"
+  | "cases"
+  | "gain"
+  | "veille"
+  | "salve"
+  | "jumeau";
 
 export type UpgradeFamily = "rail" | "cases" | "economie";
 
@@ -52,10 +60,10 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Vitesse",
     glyph: "⌁",
     description: "Voies examinées par seconde",
-    maxLevel: 150,
+    maxLevel: 400,
     basePrice: 120,
-    priceGrowth: 1.035,
-    valueAt: (level) => Math.round(CANNON_MOVE_SPEED * 1.015 ** level),
+    priceGrowth: 1.028,
+    valueAt: (level) => Math.round(CANNON_MOVE_SPEED * 1.011 ** level),
     format: (value) => `${value} voies/s`,
   },
   {
@@ -64,9 +72,9 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Rail",
     glyph: "+1",
     description: "Canons simultanés sur le rail",
-    maxLevel: 50,
+    maxLevel: 150,
     basePrice: 600,
-    priceGrowth: 1.082,
+    priceGrowth: 1.055,
     valueAt: (level) => MAX_ACTIVE_CANNONS + level,
     format: (value) => `${value} canons`,
   },
@@ -76,9 +84,9 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Chargeur",
     glyph: "◲",
     description: "Billes par case",
-    maxLevel: 100,
+    maxLevel: 300,
     basePrice: 200,
-    priceGrowth: 1.055,
+    priceGrowth: 1.035,
     valueAt: (level) => DEFAULT_LOAD_AMMO + level * 12,
     format: (value) => `${value} billes`,
   },
@@ -88,9 +96,9 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Étal",
     glyph: "▤",
     description: "Cases proposées",
-    maxLevel: 40,
+    maxLevel: 120,
     basePrice: 350,
-    priceGrowth: 1.072,
+    priceGrowth: 1.05,
     valueAt: (level) => VISIBLE_LOADS + level,
     format: (value) => `${value} cases`,
   },
@@ -102,9 +110,9 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Alliage",
     glyph: "◈",
     description: "Fragments par pixel détruit",
-    maxLevel: 120,
+    maxLevel: 400,
     basePrice: 300,
-    priceGrowth: 1.048,
+    priceGrowth: 1.03,
     valueAt: (level) => 1 + level * 0.05,
     format: (value) => `×${value.toFixed(2)} / px`,
   },
@@ -114,13 +122,40 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Veille",
     glyph: "☾",
     description: "Production pendant l'absence",
-    maxLevel: 80,
+    maxLevel: 250,
     basePrice: 450,
-    priceGrowth: 1.06,
+    priceGrowth: 1.04,
     valueAt: (level) => 1 + level * 0.075,
     format: (value) => `×${value.toFixed(2)} hors-ligne`,
   },
 
+  // Two axes that buy a *chance* rather than a number. They are the answer to
+  // hitting a ceiling: a percentage has no natural end, and a proc the player
+  // can see land reads as luck earned rather than a bar that filled.
+  {
+    id: "salve",
+    family: "rail",
+    label: "Salve",
+    glyph: "⑂",
+    description: "Chance qu'un passage morde deux fois au lieu d'une",
+    maxLevel: 250,
+    basePrice: 900,
+    priceGrowth: 1.035,
+    valueAt: (level) => Math.min(0.9, level * 0.004),
+    format: (value) => `${(value * 100).toFixed(1)} % de double`,
+  },
+  {
+    id: "jumeau",
+    family: "cases",
+    label: "Jumeau",
+    glyph: "⧉",
+    description: "Chance qu'une case parte en deux canons",
+    maxLevel: 200,
+    basePrice: 1400,
+    priceGrowth: 1.05,
+    valueAt: (level) => Math.min(0.8, level * 0.004),
+    format: (value) => `${(value * 100).toFixed(1)} % de jumeau`,
+  },
 ];
 
 export const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
@@ -136,6 +171,10 @@ export interface UpgradeEffects {
   fragmentsPerPixel: number;
   /** Multiplier on what the offline catch-up produces. */
   offlineMultiplier: number;
+  /** Chance a crossing takes a second cell off the same lane. */
+  doubleBiteChance: number;
+  /** Chance a launched load puts two cannons on the rail instead of one. */
+  twinChance: number;
 }
 
 /**
@@ -221,6 +260,47 @@ export class UpgradeState {
     return true;
   }
 
+  /**
+   * Buys up to `count` levels, stopping at the balance or the ceiling.
+   *
+   * Prices compound, so the only honest way to answer "what would ten cost" is
+   * to walk them — and the panel needs that number before the player commits,
+   * which is what `costOf` is for.
+   */
+  buyMany(id: UpgradeId, count: number): number {
+    let bought = 0;
+    while (bought < count && this.buy(id)) bought++;
+    return bought;
+  }
+
+  /** What the next `count` levels would cost, and how many are actually within reach. */
+  costOf(id: UpgradeId, count: number): { levels: number; price: number } {
+    const definition = UPGRADE_BY_ID.get(id);
+    if (!definition) return { levels: 0, price: 0 };
+
+    let level = this.levelOf(id);
+    let price = 0;
+    let levels = 0;
+
+    while (levels < count && level < definition.maxLevel) {
+      const step = Math.max(
+        1,
+        Math.round(definition.basePrice * definition.priceGrowth ** level * this.priceMultiplier),
+      );
+      if (price + step > this.balance) break;
+      price += step;
+      level++;
+      levels++;
+    }
+
+    return { levels, price };
+  }
+
+  /** Levels of `id` the balance could pay for right now. */
+  affordableLevels(id: UpgradeId): number {
+    return this.costOf(id, Number.MAX_SAFE_INTEGER).levels;
+  }
+
   /** One destroyed pixel is one fragment. */
   earn(fragments: number): void {
     this.earned += fragments;
@@ -234,6 +314,8 @@ export class UpgradeState {
       visibleLoads: valueOf("cases", this.levelOf("cases")),
       fragmentsPerPixel: valueOf("gain", this.levelOf("gain")) * bonus.fragmentMultiplier,
       offlineMultiplier: valueOf("veille", this.levelOf("veille")) * bonus.offlineMultiplier,
+      doubleBiteChance: valueOf("salve", this.levelOf("salve")),
+      twinChance: valueOf("jumeau", this.levelOf("jumeau")),
     };
   }
 

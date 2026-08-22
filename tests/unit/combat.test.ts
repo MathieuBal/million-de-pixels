@@ -619,6 +619,64 @@ describe("CombatSimulator", () => {
   });
 });
 
+describe("CannonQueue slots", () => {
+  function stall() {
+    const world = makeWorld(4);
+    const reserve = new ColorAmmoReserve(world);
+    const queue = new CannonQueue(new CannonLoadGenerator(reserve, new XorShift32(6)), reserve);
+    queue.refill();
+    return { world, reserve, queue };
+  }
+
+  it("never moves an offer that was not taken", () => {
+    // The bug this exists for: taking a tile used to shift every offer to its
+    // right one place left, so the next tap — aimed at a colour the player had
+    // picked out — sent whatever slid under the finger instead.
+    const { queue } = stall();
+    const before = queue.positions.map((load) => load?.id ?? null);
+
+    queue.take(before[2]!);
+
+    const after = queue.positions.map((load) => load?.id ?? null);
+    expect(after).toHaveLength(before.length);
+    for (let slot = 0; slot < before.length; slot++) {
+      if (slot === 2) continue;
+      expect(after[slot]).toBe(before[slot]);
+    }
+    // The emptied slot is refilled where it stands, not from its neighbours.
+    expect(after[2]).not.toBe(before[2]);
+    expect(after[2]).not.toBeNull();
+  });
+
+  it("keeps the row's shape when nothing can fill a slot", () => {
+    const { world, queue } = stall();
+    for (let c = 0; c < 4; c++) world.destroyRandomOfColor(c, PIXEL_COUNT, new XorShift32(c + 1));
+    queue.dropExhausted();
+
+    expect(queue.positions).toHaveLength(VISIBLE_LOADS);
+    expect(queue.positions.every((load) => load === null)).toBe(true);
+    expect(queue.visible).toHaveLength(0);
+  });
+
+  it("gives back what a shrunk queue was holding", () => {
+    const { reserve, queue } = stall();
+    const committed = queue.visible.reduce((sum, load) => sum + load.ammo, 0);
+    queue.setSize(3);
+
+    expect(queue.positions).toHaveLength(3);
+    const stillQueued = [0, 1, 2, 3].reduce((sum, c) => sum + reserve.stateOf(c).queuedAmmo, 0);
+    expect(stillQueued).toBeLessThan(committed);
+    expect(stillQueued).toBe(queue.visible.reduce((sum, load) => sum + load.ammo, 0));
+  });
+
+  it("ignores a stale id instead of taking someone else's slot", () => {
+    const { queue } = stall();
+    const id = queue.positions[0]!.id;
+    queue.take(id);
+    expect(queue.take(id)).toBeNull();
+  });
+});
+
 describe("PixelWorld.reachableColors", () => {
   it("separates what a cannon can hit from what is buried behind it", () => {
     // Colour 1 walls colour 0 in from every side: alive, and unreachable until

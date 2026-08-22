@@ -197,8 +197,8 @@ export class GameController {
     return this.meta.bonus();
   }
 
-  buyMetaUpgrade(id: MetaUpgradeId): boolean {
-    if (!this.meta.buy(id)) return false;
+  buyMetaUpgrade(id: MetaUpgradeId, count = 1): boolean {
+    if (this.meta.buyMany(id, Math.max(1, count)) === 0) return false;
     // A permanent cannon slot has to reach the rail that is already running.
     this.applyUpgrades();
     void this.saveMeta();
@@ -254,8 +254,8 @@ export class GameController {
     return this.autoLaunch;
   }
 
-  buyUpgrade(id: UpgradeId): boolean {
-    if (!this.upgrades.buy(id)) return false;
+  buyUpgrade(id: UpgradeId, count = 1): boolean {
+    if (this.upgrades.buyMany(id, Math.max(1, count)) === 0) return false;
     this.applyUpgrades();
     this.saveDirty = true;
     return true;
@@ -274,6 +274,7 @@ export class GameController {
     // The capabilities are the profile's, not the image's: a cannon does not
     // pierce, explode, arc or burn until the talent tree paid for it once.
     this.combat?.setEffects(bonus.effects);
+    this.combat?.setChances(effects.doubleBiteChance, effects.twinChance);
     this.generator?.setAmmoPerLoad(effects.ammoPerLoad);
     this.queue?.setSize(effects.visibleLoads);
   }
