@@ -374,8 +374,9 @@ suffirait de recommencer pour mettre un build en banque.
 
 ### Ce que vaut une toile
 
-Quatre choses rendent une image difficile, et chacune est une ligne lisible sur
-le panneau de fin plutôt qu'un nombre à croire sur parole :
+Quatre choses rendent une image difficile, et une cinquième dit ce que le profil
+y apporte. Chacune est une ligne lisible sur le panneau de fin plutôt qu'un
+nombre à croire sur parole :
 
 | Ligne | Ce qu'elle mesure |
 |---|---|
@@ -383,14 +384,36 @@ le panneau de fin plutôt qu'un nombre à croire sur parole :
 | Palette | `1 + (couleurs − 6) × 0,10` — chaque couleur est une file, un canon et un goulot de plus |
 | Couleurs rares | `1 + rares × 0,15` — celles qui se cachent derrière la façade d'une autre |
 | Passage | `1 + (passage − 1) × 0,25` — revenir sur une image connue rapporte moins, jamais rien |
+| **Métier** | `1 + toiles_finies × 0,04` — la seule ligne qui monte toute seule |
+
+**Métier est la ligne qui a manqué le plus longtemps.** Sans elle le revenu était
+plat : 25 éclats à la toile 1, 25 à la toile 10, mesuré. En face, l'arbre demande
+des milliers d'éclats pour un multiplicateur — Mémoire, le seul nœud qui
+raccourcisse la toile *suivante*, en voulait 6 525, soit 261 toiles, soit deux
+cent cinquante heures. Chaque axe qui compose était à deux ordres de grandeur du
+revenu, et un jeu d'attente ne marche que si sa courbe accélère. Métier compte
+les toiles finies, pas les pixels ni les couleurs : c'est ce que le joueur a
+fait. Elle exclut la toile en cours — le prix est ce que le profil a apporté à
+l'image, pas ce qu'il vaudra une fois qu'elle est finie.
 
 La ligne « couleurs rares » est ce qui donne enfin une valeur mécanique à la
 préservation des micro-couleurs : une couleur descendue à une fraction de pour
 cent est exactement celle qui bloque une partie derrière une autre, et c'est
 précisément ce que la détection de palette a été construite pour garder.
 
-Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs rares :
-`12 × 1,20 × 1,75 = 25 éclats`.
+Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs rares,
+première toile d'un profil neuf : `12 × 1,20 × 1,75 × 1,00 = 25 éclats`. Le même
+poster à la dixième toile : `× 1,40 = 35`, à la quarantième : `× 2,60 = 65`.
+
+Le pas de l'arbre suit la même correction. `TICK` valait un cinquième de pour
+cent par point ; un prix linéaire pour un effet linéaire rend le coût d'un
+*doublement* quadratique, donc ×1,5 sur la vitesse du rail demandait 250 points
+et 3 725 éclats. À deux cinquièmes de pour cent il faut moitié moins de points et
+donc le quart du prix : 1 082 éclats, 29 toiles — à côté des 29 toiles que
+coûtent les huit déblocages. Le pas de prix de Mémoire, le plus raide de l'arbre
+sur le nœud qui compte le plus, passe de 0,5 à 0,2. Aucun de ces axes n'a de
+plafond : ce qui a changé, c'est que leur premier vrai multiplicateur tient dans
+la vie d'un profil.
 
 Ils sont rangés dans le magasin de réglages, pas dans une sauvegarde de niveau,
 parce que c'est exactement ce qu'ils sont : de l'état de profil.

@@ -100,8 +100,26 @@ export interface MetaUpgradeDefinition {
   format: (value: number) => string;
 }
 
-/** A fifth of a percent, the unit the whole root of the tree is built on. */
-const TICK = 0.002;
+/**
+ * Two fifths of a percent, the unit the whole root of the tree is built on.
+ *
+ * It was a fifth, and a fifth was measured to be unreachable. A linear price
+ * for a linear effect makes the cost of *doubling* an axis quadratic: at
+ * 0.2 % a point, ×1,5 on the rail speed asks for two hundred and fifty points
+ * and 3 725 éclats — a hundred and forty-nine toiles at the twenty-five a clear
+ * pays. Mémoire, the one node that shortens the *next* toile, came out at two
+ * hundred and sixty-one toiles, which at fifty minutes each is two hundred and
+ * fifty hours. Every axis that compounds sat two orders of magnitude past the
+ * income; the only healthy purchase in the tree was Socle, and Socle is the one
+ * with a flat price.
+ *
+ * Doubling the tick halves the points a target needs, and the price being
+ * quadratic in points means it quarters the éclats. ×1,5 on the rail now costs
+ * a thousand and twenty-nine — twenty-nine toiles, next to the twenty-six the
+ * eight unlocks take. Nothing here has a ceiling, so the axis keeps going; what
+ * changed is that its first real multiplier is inside a profile's life.
+ */
+const TICK = 0.004;
 
 const pct = (value: number) => `${(value * 100).toFixed(1)} %`;
 const mult = (value: number) => `×${value.toFixed(3)}`;
@@ -209,7 +227,12 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
     glyph: "≡",
     description: "Niveaux repris sur la toile suivante",
     basePrice: 6,
-    priceStep: 0.5,
+    // The steepest step in the tree, on the node that matters most: at 0.5 the
+    // price is quadratic fast enough that thirty percent carried cost 6 525
+    // éclats. It is the compounding node — the only one that makes the next
+    // toile shorter than this one — so it is the last that should have been
+    // priced out of reach.
+    priceStep: 0.2,
     // Capped where it stops being a head start and starts being the whole run.
     valueAt: (p) => Math.min(0.6, p * TICK),
     format: (value) => `${(value * 100).toFixed(1)} % des niveaux`,
@@ -479,6 +502,8 @@ export interface ClearInput {
   pass: number;
   /** Prospecteur, from the permanent bonus. */
   multiplier?: number;
+  /** Toiles this profile has already finished, all images together. */
+  clears?: number;
 }
 
 /** The reward, itemised. The panel shows these lines, so they are the model. */
@@ -487,9 +512,26 @@ export interface ClearReward {
   paletteFactor: number;
   rarityFactor: number;
   passFactor: number;
+  /** Métier: what every toile already finished is worth on this one. */
+  craftFactor: number;
   multiplier: number;
   total: number;
 }
+
+/**
+ * What one finished toile adds to every later one.
+ *
+ * Four percent, and it is the only term in the reward that grows on its own.
+ * Measured before it existed: twenty-five éclats a clear, toile one and toile
+ * ten alike, against a tree whose compounding nodes wanted thousands. An idle
+ * game works because the curve accelerates; this one was a straight line, so a
+ * profile ten hours in played exactly like a profile on its first minute.
+ *
+ * It counts toiles, not pixels or colours, because that is the thing the player
+ * did — and it reads on the completion panel as a line that goes up every time,
+ * which is the point of it.
+ */
+export const CRAFT_PER_CLEAR = 0.04;
 
 /**
  * What clearing a toile is worth.
@@ -504,6 +546,7 @@ export function rewardForClear(input: ClearInput): ClearReward {
   const paletteFactor = 1 + Math.max(0, input.paletteSize - PLAIN_PALETTE) * 0.1;
   const rarityFactor = 1 + Math.max(0, input.awkwardColors) * 0.15;
   const passFactor = 1 + Math.max(0, input.pass - 1) * 0.25;
+  const craftFactor = 1 + Math.max(0, input.clears ?? 0) * CRAFT_PER_CLEAR;
   const multiplier = input.multiplier ?? 1;
 
   return {
@@ -511,10 +554,11 @@ export function rewardForClear(input: ClearInput): ClearReward {
     paletteFactor,
     rarityFactor,
     passFactor,
+    craftFactor,
     multiplier,
     total: Math.max(
       1,
-      Math.round(base * paletteFactor * rarityFactor * passFactor * multiplier),
+      Math.round(base * paletteFactor * rarityFactor * passFactor * craftFactor * multiplier),
     ),
   };
 }
@@ -719,8 +763,17 @@ export class MetaProgression {
    * Mémoire carries into the next image. Only a real clear updates it: a restart
    * must not, or restarting would be a way to bank a build.
    */
-  recordClear(input: Omit<ClearInput, "multiplier">, levels: UpgradeLevels = {}): ClearReward {
-    const reward = rewardForClear({ ...input, multiplier: this.bonus().shardMultiplier });
+  recordClear(
+    input: Omit<ClearInput, "multiplier" | "clears">,
+    levels: UpgradeLevels = {},
+  ): ClearReward {
+    // The toiles already finished count, this one does not: the reward is what
+    // the profile brought to the image, not what it is about to be worth.
+    const reward = rewardForClear({
+      ...input,
+      clears: this.clears,
+      multiplier: this.bonus().shardMultiplier,
+    });
     this.earned += reward.total;
     this.clears++;
     this.lastLevels = { ...levels };

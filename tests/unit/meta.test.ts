@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CRAFT_PER_CLEAR,
+  META_BY_ID,
   MetaProgression,
   rewardForClear,
   NO_PERMANENT_BONUS,
@@ -15,6 +17,31 @@ describe("MetaProgression", () => {
   });
 
   const plain = { playablePixels: 1_000_000, paletteSize: 6, awkwardColors: 0, pass: 1 };
+
+  it("paie de plus en plus à mesure que le profil finit des toiles", () => {
+    // The defect this fixes, measured: twenty-five éclats a clear on toile one
+    // and on toile ten alike, against a tree whose compounding nodes wanted
+    // thousands. A straight line is not a progression curve.
+    const first = rewardForClear({ ...plain, clears: 0 }).total;
+    const tenth = rewardForClear({ ...plain, clears: 10 }).total;
+    const fortieth = rewardForClear({ ...plain, clears: 40 }).total;
+
+    expect(tenth).toBeGreaterThan(first);
+    expect(fortieth).toBeGreaterThan(tenth);
+    expect(rewardForClear({ ...plain, clears: 10 }).craftFactor).toBeCloseTo(
+      1 + 10 * CRAFT_PER_CLEAR,
+      9,
+    );
+  });
+
+  it("compte les toiles déjà finies, jamais celle qu'on vient de finir", () => {
+    // The reward is what the profile brought to the image, not what it is about
+    // to be worth: paying for the current clear would make the first one pay a
+    // bonus for itself.
+    const meta = new MetaProgression();
+    expect(meta.recordClear(plain).craftFactor).toBe(1);
+    expect(meta.recordClear(plain).craftFactor).toBeCloseTo(1 + CRAFT_PER_CLEAR, 9);
+  });
 
   it("pays more for a dense image than for a sparse one", () => {
     expect(rewardForClear(plain).total).toBeGreaterThan(
@@ -68,11 +95,16 @@ describe("MetaProgression", () => {
     expect(reward.total).toBe(20);
     expect(meta.balance).toBe(20);
     expect(meta.totalClears).toBe(1);
+    // A first clear has no toiles behind it, so Métier pays nothing yet.
+    expect(reward.craftFactor).toBe(1);
 
     const price = meta.priceOf("elan")!;
     expect(meta.buy("elan")).toBe(true);
     expect(meta.balance).toBe(20 - price);
-    expect(meta.bonus().fragmentMultiplier).toBeCloseTo(1.002, 6);
+    expect(meta.bonus().fragmentMultiplier).toBeCloseTo(
+      META_BY_ID.get("elan")!.valueAt(1),
+      6,
+    );
   });
 
   it("pays more once Prospecteur is stacked", () => {
@@ -102,10 +134,14 @@ describe("MetaProgression", () => {
       expect(hundredth).toBeLessThan(first * 20);
     });
 
-    it("moves a fifth of a percent at a time", () => {
+    it("avance d'un pas fixe, quel qu'il soit", () => {
+      // Read the tick rather than write it down: it is a balancing number and
+      // has already moved once, from a fifth of a percent to two fifths.
       const meta = new MetaProgression({ earned: 1_000_000 });
-      for (let i = 0; i < 100; i++) meta.buy("fondation");
-      expect(meta.bonus().speedMultiplier).toBeCloseTo(1.2, 6);
+      const step = meta.buy("fondation") ? meta.bonus().speedMultiplier - 1 : 0;
+      expect(step).toBeGreaterThan(0);
+      for (let i = 1; i < 100; i++) meta.buy("fondation");
+      expect(meta.bonus().speedMultiplier).toBeCloseTo(1 + 100 * step, 6);
     });
 
     it("discounts the shop without ever reaching free", () => {
@@ -176,12 +212,13 @@ describe("MetaProgression", () => {
 
     it("carries a slice of the last cleared toile's build", () => {
       const meta = new MetaProgression({ earned: 1_000_000 });
-      for (let i = 0; i < 100; i++) meta.buy("memoire"); // 20 %
+      for (let i = 0; i < 100; i++) meta.buy("memoire");
+      const share = META_BY_ID.get("memoire")!.valueAt(100);
       meta.recordClear(plain, { vitesse: 40, munitions: 20, cases: 2 });
 
       const carried = meta.bonus().carriedLevels;
-      expect(carried.vitesse).toBe(8);
-      expect(carried.munitions).toBe(4);
+      expect(carried.vitesse).toBe(Math.floor(40 * share));
+      expect(carried.munitions).toBe(Math.floor(20 * share));
       // A level too small to leave a whole one behind carries nothing.
       expect(carried.cases).toBeUndefined();
     });
@@ -199,7 +236,10 @@ describe("MetaProgression", () => {
       meta.recordClear(plain, { vitesse: 40 });
 
       // Nothing else touches the snapshot: a restart must never bank a build.
-      expect(MetaProgression.restore(meta.serialize()).bonus().carriedLevels.vitesse).toBe(8);
+      const share = META_BY_ID.get("memoire")!.valueAt(100);
+      expect(MetaProgression.restore(meta.serialize()).bonus().carriedLevels.vitesse).toBe(
+        Math.floor(40 * share),
+      );
     });
   });
 
