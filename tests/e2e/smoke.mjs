@@ -460,6 +460,24 @@ async function checkClearReward(browser, fixture) {
       (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 1,
   );
 
+  // The library: a hex is catalogued by clearing a colour that snaps to it, and
+  // pays passively from then on.
+  await page.locator('#upgrade-tabs button[data-tab="library"]').click();
+  await page.waitForTimeout(300);
+  const cells = await page.locator(".hex-cell").count();
+  const found = await page.locator('.hex-cell[data-found="true"]').count();
+  check("le nuancier a un total", cells === 216, `${cells} teintes`);
+  check(
+    "terminer une toile en catalogue",
+    found > 0 && found <= 8,
+    `${found} teintes sur ${cells}`,
+  );
+  check(
+    "il n'y a ni onglet de famille ni lot sur cette page",
+    (await page.locator("#upgrade-subtabs").isHidden()) &&
+      (await page.locator("#upgrade-batch").isHidden()),
+  );
+
   await ctx.close();
   await checkPaletteBoard(browser, fixture);
 }

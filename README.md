@@ -362,6 +362,31 @@ Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs ra
 Ils sont rangés dans le magasin de réglages, pas dans une sauvegarde de niveau,
 parce que c'est exactement ce qu'ils sont : de l'état de profil.
 
+### Le nuancier
+
+Deux cent seize teintes — chaque canal ramené à l'un de six niveaux, ce qui donne
+les hexadécimaux `#000000`, `#003366`, `#FF6699`… Ce nombre *est* l'intérêt : une
+collection a besoin d'un dénominateur. Des valeurs exactes donneraient des
+milliers d'entrées presque identiques et un livre sans dernière page, ce qui est
+l'inverse de ce à quoi sert une collection.
+
+Une teinte est cataloguée quand une couleur qui s'y rattache est **épuisée
+entièrement** — le seul moment d'une partie qui soit indiscutablement fini : la
+case quitte l'étal, un goulot se résout, le compteur touche zéro et y reste.
+Cataloguer chaque couleur dont un pixel a été pris remplirait la grille dans les
+trente premières secondes de la première toile.
+
+Chaque teinte paie **+0,15 % de fragments et de production hors-ligne**, à vie.
+La bibliothèque est un relevé de travail déjà fait : la payer en puissance de
+combat en ferait un deuxième arbre d'améliorations sans aucun de ses choix. Une
+grille pleine vaut +32 % sur les deux — réel, et jamais la raison de jouer.
+
+La grille se lit en douze colonnes : les six niveaux de bleu d'un même couple
+rouge-vert tiennent sur une ligne et demie, donc les couleurs voisines restent
+ensemble et un trou dans les rouges se voit comme un trou. La pastille montre le
+**spécimen tel qu'il était sur le plateau**, pas la valeur de grille sous
+laquelle il a été classé.
+
 ### Le confort se gagne
 
 | Nœud | Prix | Ce qu'il retire de pénible |

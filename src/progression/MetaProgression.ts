@@ -1,3 +1,4 @@
+import { ColorLibrary, type LibrarySnapshot } from "./ColorLibrary";
 import type { UpgradeId, UpgradeLevels } from "./Upgrades";
 
 /**
@@ -589,6 +590,8 @@ export interface MetaSnapshot {
   clears: number;
   /** Level upgrades as they stood when the last toile was cleared. */
   lastLevels: UpgradeLevels;
+  /** Colours finished off, kept for good. */
+  library: LibrarySnapshot;
 }
 
 export class MetaProgression {
@@ -597,6 +600,8 @@ export class MetaProgression {
   private spent: number;
   private clears: number;
   private lastLevels: UpgradeLevels;
+  /** The colour book. Profile state, like everything else here. */
+  readonly library: ColorLibrary;
 
   constructor(snapshot: Partial<MetaSnapshot> = {}) {
     this.levels = new Map(META_UPGRADES.map((u) => [u.id, snapshot.levels?.[u.id] ?? 0]));
@@ -604,6 +609,7 @@ export class MetaProgression {
     this.spent = snapshot.spent ?? 0;
     this.clears = snapshot.clears ?? 0;
     this.lastLevels = { ...(snapshot.lastLevels ?? {}) };
+    this.library = ColorLibrary.restore(snapshot.library);
   }
 
   get balance(): number {
@@ -738,11 +744,15 @@ export class MetaProgression {
     const branch = (unlock: MetaUpgradeId, id: MetaUpgradeId): number =>
       this.levelOf(unlock) > 0 ? this.valueOf(id) : 0;
 
+    // The library pays passively for work already finished: it multiplies what
+    // an image is worth and what an absence produces, and touches nothing else.
+    const book = this.library.bonus();
+
     return {
       startingFragments: this.valueOf("heritage"),
-      fragmentMultiplier: this.valueOf("elan"),
+      fragmentMultiplier: this.valueOf("elan") * book.fragmentMultiplier,
       extraCannons: this.valueOf("socle"),
-      offlineMultiplier: this.valueOf("somnambule"),
+      offlineMultiplier: this.valueOf("somnambule") * book.offlineMultiplier,
       speedMultiplier: this.valueOf("fondation"),
       ammoMultiplier: this.valueOf("atelier"),
       shardMultiplier: this.valueOf("prospecteur"),
@@ -774,6 +784,7 @@ export class MetaProgression {
       spent: this.spent,
       clears: this.clears,
       lastLevels: { ...this.lastLevels },
+      library: this.library.serialize(),
     };
   }
 

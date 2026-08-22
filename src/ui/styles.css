@@ -884,7 +884,33 @@ html, body {
 .upgrade-row[data-state="owned"] .price { background: var(--raise); color: var(--muted-2); }
 .tree-note { font-size: 11px; color: var(--muted-3); padding: 8px 2px 0; }
 
+/*
+ * The colour book. Twelve columns so the six blue levels of one red-green pair
+ * sit on a line and a half — related colours stay together, and a hole in the
+ * reds is visible as a hole rather than lost in noise.
+ */
+.hex-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 3px;
+  padding: 10px 0 4px;
+}
+.hex-cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: #101015;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+/* A missing hex is a hole, not a grey swatch: it must not look catalogued. */
+.hex-cell[data-found="false"] { background: repeating-linear-gradient(
+  45deg, #0e0e13, #0e0e13 2px, #14141a 2px, #14141a 4px); }
+.hex-cell[data-found="true"] { border-color: rgba(255, 255, 255, 0.18); }
+
 .upgrade-batch { display: flex; gap: 6px; }
+/* `display: flex` beats the user agent's `[hidden] { display: none }`, so a
+   hidden row has to say so itself. */
+.upgrade-batch[hidden],
+.upgrade-subtabs[hidden] { display: none; }
 .batch-button {
   flex: 1;
   padding: 6px;

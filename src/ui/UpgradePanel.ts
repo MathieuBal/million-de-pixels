@@ -15,6 +15,7 @@ import {
   type MetaUpgradeDefinition,
   type MetaUpgradeId,
 } from "../progression/MetaProgression";
+import { HEX_BONUS, LIBRARY_HEXES, LIBRARY_SIZE } from "../progression/ColorLibrary";
 import { formatCount } from "./format";
 
 /** Axes shown as shortcuts in the bottom row — all four of them. */
@@ -49,7 +50,7 @@ export class UpgradePanel {
   private readonly subTabs = document.getElementById("upgrade-subtabs") as HTMLElement;
 
   private boosterSignature = "";
-  private tab: "level" | "permanent" = "level";
+  private tab: "level" | "permanent" | "library" = "level";
   /** Which family of the shop, or which branch of the tree, is on screen. */
   private family: UpgradeFamily = "rail";
   private branch: MetaBranch = "racine";
@@ -60,6 +61,7 @@ export class UpgradePanel {
     for (const [id, label] of [
       ["level", "Cette image"],
       ["permanent", "Permanent"],
+      ["library", "Nuancier"],
     ] as const) {
       const tab = document.createElement("button");
       tab.type = "button";
@@ -132,6 +134,15 @@ export class UpgradePanel {
    * whichever surface is showing, and it carries that surface's accent.
    */
   private syncSubTabs(): void {
+    // The library has one page, so it gets no second row of tabs at all.
+    if (this.tab === "library") {
+      this.subTabs.hidden = true;
+      this.batchRow.hidden = true;
+      return;
+    }
+    this.subTabs.hidden = false;
+    this.batchRow.hidden = false;
+
     const entries: Array<[string, string]> =
       this.tab === "level"
         ? FAMILY_ORDER.map((id) => [id, FAMILY_LABELS[id]])
@@ -172,7 +183,7 @@ export class UpgradePanel {
     this.panel.dataset.tab = this.tab;
   }
 
-  open(tab: "level" | "permanent" = this.tab): void {
+  open(tab: "level" | "permanent" | "library" = this.tab): void {
     this.tab = tab;
     this.syncTabs();
     this.syncBatch();
@@ -225,6 +236,10 @@ export class UpgradePanel {
     this.rows.replaceChildren();
     this.syncSubTabs();
 
+    if (this.tab === "library") {
+      this.renderLibrary();
+      return;
+    }
     if (this.tab === "permanent") {
       this.renderPermanent();
       return;
@@ -325,6 +340,51 @@ export class UpgradePanel {
     note.className = "tree-note";
     note.textContent = `${meta.totalClears} toile(s) terminée(s) · les éclats ne se dépensent qu'ici`;
     this.rows.appendChild(note);
+  }
+
+  /**
+   * The colour book: two hundred and sixteen hexes, and how many are yours.
+   *
+   * A grid rather than a list, because the shape of what is missing is the
+   * information — a hole in the reds says "go find a warm image" far better
+   * than a number would. Each hex is catalogued by clearing a colour that snaps
+   * to it, and pays passively for the rest of the profile's life: work already
+   * finished, rewarded quietly, never the reason to play.
+   */
+  private renderLibrary(): void {
+    const library = this.game.getMeta().library;
+    const bonus = library.bonus();
+
+    const head = document.createElement("div");
+    head.className = "upgrade-family";
+    head.textContent = `${library.discovered} / ${LIBRARY_SIZE} teintes`;
+    this.rows.appendChild(head);
+
+    const note = document.createElement("p");
+    note.className = "tree-note";
+    note.textContent =
+      `+${((bonus.fragmentMultiplier - 1) * 100).toFixed(1)} % de fragments et de production ` +
+      `hors-ligne · ${(HEX_BONUS * 100).toFixed(2)} % par teinte`;
+    this.rows.appendChild(note);
+
+    const grid = document.createElement("div");
+    grid.className = "hex-grid";
+    for (const hex of LIBRARY_HEXES) {
+      const specimen = library.specimen(hex);
+      const cell = document.createElement("div");
+      cell.className = "hex-cell";
+      cell.dataset.found = String(specimen !== null);
+      if (specimen) {
+        // The swatch shows the specimen as it was on the board, not the grid
+        // value it was filed under.
+        cell.style.background = `rgb(${specimen.r}, ${specimen.g}, ${specimen.b})`;
+        cell.title = `${hex} · ${formatCount(specimen.pixels)} px · ${specimen.clears} fois`;
+      } else {
+        cell.title = `${hex} — jamais épuisée`;
+      }
+      grid.appendChild(cell);
+    }
+    this.rows.appendChild(grid);
   }
 
   private metaRow(definition: MetaUpgradeDefinition): HTMLElement {

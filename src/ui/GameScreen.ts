@@ -94,8 +94,13 @@ export class GameScreen {
    * announcement that changes what the player can do next: a card has left the
    * offers, and a bottleneck with it.
    */
-  announceColorCleared(colorId: number, count: number): void {
-    this.notify(`Couleur #${colorId} épuisée · ${formatCount(count)} px`, "milestone", 6000);
+  announceColorCleared(colorId: number, count: number, newToLibrary = false): void {
+    const suffix = newToLibrary ? " · nouvelle au nuancier" : "";
+    this.notify(
+      `Couleur #${colorId} épuisée · ${formatCount(count)} px${suffix}`,
+      "milestone",
+      6000,
+    );
   }
 
   setLevelLabel(label: string): void {

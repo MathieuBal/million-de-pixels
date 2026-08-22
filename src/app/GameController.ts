@@ -66,7 +66,7 @@ export interface GameEvents {
   onLevelReady?: (world: PixelWorld) => void;
   onMilestone?: (milestone: Milestone) => void;
   /** A colour just ran out. The card leaves the offers with it. */
-  onColorCleared?: (colorId: number, count: number) => void;
+  onColorCleared?: (colorId: number, count: number, newToLibrary: boolean) => void;
   /** The board is empty. Fired once per pass, the moment the last pixel goes. */
   onLevelCleared?: (pass: number, reward: ClearReward) => void;
   /** The level took over and is finishing itself. Fired once per pass. */
@@ -638,7 +638,16 @@ export class GameController {
       if (this.world.aliveByColor(colour) > 0 || this.clearedColors.has(colour)) continue;
       this.clearedColors.add(colour);
       this.shaker.request(3, 140);
-      this.events.onColorCleared?.(colour, this.world.palette[colour]?.count ?? 0);
+
+      // A colour cleared outright is the one moment in a run that is
+      // unarguably finished — which is exactly what the library collects.
+      const entry = this.world.palette[colour];
+      const slot = entry
+        ? this.meta.library.record({ r: entry.r, g: entry.g, b: entry.b, count: entry.count })
+        : null;
+      if (slot) void this.saveMeta();
+
+      this.events.onColorCleared?.(colour, entry?.count ?? 0, slot !== null);
     }
 
     const crossed = this.milestones.update(this.world.progress());

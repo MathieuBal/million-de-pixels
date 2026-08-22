@@ -89,6 +89,27 @@ try {
     await browser.close();
     process.exit(0);
   }
+  if (process.env.SHOT_LIBRARY) {
+    await page.evaluate(() => {
+      const meta = window.__game.getMeta();
+      // A profile a few dozen toiles in: enough holes for the grid to read.
+      let seed = 7;
+      const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+      for (let i = 0; i < 70; i++) {
+        meta.library.record({
+          r: Math.floor(rnd() * 256), g: Math.floor(rnd() * 256), b: Math.floor(rnd() * 256),
+          count: Math.floor(rnd() * 90000),
+        });
+      }
+    });
+    await page.locator("#pause").click();
+    await page.waitForSelector("#upgrade-panel:not([hidden])");
+    await page.locator('#upgrade-tabs button[data-tab="library"]').click();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
   if (process.env.SHOT_CLEAR) {
     await page.evaluate(() => {
       const world = window.__game.getWorld();
