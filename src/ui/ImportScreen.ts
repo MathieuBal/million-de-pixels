@@ -35,6 +35,8 @@ export class ImportScreen {
   private readonly swatches = document.getElementById("palette-swatches") as HTMLElement;
   private readonly cta = document.getElementById("start-run") as HTMLButtonElement;
   private readonly resumeButton = document.getElementById("resume-run") as HTMLButtonElement;
+  private readonly treeButton = document.getElementById("import-tree") as HTMLButtonElement;
+  private readonly shardCount = document.getElementById("import-shards") as HTMLElement;
 
   private readonly paletteSize = document.getElementById("palette-size") as HTMLInputElement;
   private readonly paletteValue = document.getElementById("palette-size-value") as HTMLOutputElement;
@@ -105,6 +107,16 @@ export class ImportScreen {
 
   onResume(handler: () => void): void {
     this.resumeButton.addEventListener("click", handler);
+  }
+
+  onOpenTree(handler: () => void): void {
+    this.treeButton.addEventListener("click", handler);
+  }
+
+  /** The permanent tree is only worth offering once there is something in it. */
+  setShards(shards: number): void {
+    this.treeButton.hidden = shards <= 0;
+    this.shardCount.textContent = String(shards);
   }
 
   hide(): void {

@@ -34,6 +34,7 @@ export class RunMenu {
   private readonly openButton = document.getElementById("menu") as HTMLButtonElement;
   private readonly closeButton = document.getElementById("run-menu-close") as HTMLButtonElement;
   private readonly nextButton = document.getElementById("run-next") as HTMLButtonElement;
+  private readonly treeButton = document.getElementById("run-tree") as HTMLButtonElement;
   private readonly restartButton = document.getElementById("run-restart") as HTMLButtonElement;
   private readonly changeButton = document.getElementById("run-change") as HTMLButtonElement;
 
@@ -42,13 +43,23 @@ export class RunMenu {
   /** What the clear just paid, itemised, shown once in the completion panel. */
   private reward: ClearReward | null = null;
 
-  constructor(private readonly game: GameController) {
+  constructor(
+    private readonly game: GameController,
+    private readonly onOpenTree: () => void,
+  ) {
     this.openButton.addEventListener("click", () => this.open());
     this.closeButton.addEventListener("click", () => this.close());
     this.scrim.addEventListener("click", () => this.close());
 
     this.nextButton.addEventListener("click", () => {
       if (this.game.startNextPass()) this.close();
+    });
+
+    // The tree is reached from the end of an image, which is the moment a
+    // player has éclats and a reason to think about the next toile.
+    this.treeButton.addEventListener("click", () => {
+      this.close();
+      this.onOpenTree();
     });
 
     this.arm(this.restartButton, "Tout recommencer ?", () => {

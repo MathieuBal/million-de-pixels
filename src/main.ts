@@ -50,6 +50,7 @@ async function boot(): Promise<void> {
         gameScreen.hide();
         // A level set aside is still there: the import screen says so.
         importScreen.setResumable(game.canResume);
+        importScreen.setShards(game.getMeta().balance);
         importScreen.show();
       }
     },
@@ -79,10 +80,16 @@ async function boot(): Promise<void> {
   gameScreen = new GameScreen(game);
   offlineScreen = new OfflineScreen(() => {});
 
-  runMenu = new RunMenu(game);
+  runMenu = new RunMenu(game, () => gameScreen.upgrades.open("permanent"));
 
   importScreen.onStart(() => game.startPreparedLevel());
   importScreen.onResume(() => game.resume());
+  importScreen.onOpenTree(() => {
+    // From the import home too: a profile between images still has éclats to
+    // spend, and nothing else to do with them.
+    if (game.canResume) game.resume();
+    gameScreen.upgrades.open("permanent");
+  });
 
   const zoomLevel = document.getElementById("zoom-level") as HTMLOutputElement;
   const showZoom = (): void => {

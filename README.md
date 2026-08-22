@@ -231,8 +231,14 @@ repartir des valeurs de base, sinon la première passe de chaque image après la
 première serait finie avant d'avoir commencé. Restait à donner un intérêt à
 terminer une toile — ce sont les **éclats**.
 
-L'arbre a trois sortes de nœud, parce qu'ils répondent à trois questions
-différentes.
+**En jeu, la boutique montre une famille à la fois** — trois onglets, deux ou
+trois axes à l'écran, jamais douze. Chaque ligne dit la valeur qu'elle a et
+celle que l'achat donnerait, jamais un pourcentage abstrait, et la barre sous la
+ligne est la progression sur la piste de l'axe. Un axe maxé reste en place,
+éteint : « celui-là est fini » est une information.
+
+L'arbre s'ouvre **branche par branche**, et il a trois sortes de nœud, parce
+qu'ils répondent à trois questions différentes.
 
 **`point` — une seule case qu'on fait monter, sans plafond.** Un cinquième de
 pour cent à la fois, avec un prix qui monte *linéairement* : `base + points ×
@@ -265,9 +271,19 @@ l'a pas payé une fois.
 
 **`stat` — un nœud `point` derrière une porte.** Rayon, rebonds, propagation,
 chance de proc : les nombres qui ne veulent rien dire tant que la capacité
-n'existe pas. Une branche n'apparaît qu'une fois sa capacité achetée — afficher
-vingt-cinq lignes grisées à la première toile dirait « voici tout ce que tu n'as
-pas », alors que la porte seule dit « voici la prochaine chose à vouloir ».
+n'existe pas.
+
+Un nœud verrouillé est **listé, pas caché**. Le cacher ne dit rien ; montrer la
+porte dit « voici la prochaine chose à vouloir », et montrer un réglage derrière
+une porte fermée dit à quoi la porte sert. Ce qu'un nœud verrouillé ne doit
+jamais faire, c'est avoir l'air achetable — il annonce donc ce qui manque à la
+place d'un prix, et garde son nom pour lui jusqu'à l'ouverture.
+
+Les nœuds sans plafond affichent le **rang atteint** (`p. 34`), pas une barre :
+il n'y a pas de maximum vers lequel la remplir.
+
+L'arbre se rejoint depuis le bilan de fin d'image — le moment où on a des éclats
+et une raison de penser à la toile suivante — ou depuis l'accueil d'import.
 
 **Les trois effets doivent se ressembler le moins possible**, sinon c'est une
 amélioration achetée trois fois. L'explosion estampe un disque sur l'image sans

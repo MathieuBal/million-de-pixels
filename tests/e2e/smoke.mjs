@@ -162,18 +162,37 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
-  // In game the shop stays short on purpose: six axes, three families. The
-  // capabilities and their numbers live in the between-toiles tree.
-  check("le panneau reste court en jeu", (await page.locator(".upgrade-row").count()) === 8);
-  check("les axes sont groupes par famille", (await page.locator(".upgrade-family").count()) === 3);
+  // In game the shop shows one family at a time: two axes on screen, not
+  // twelve. The capabilities and their numbers live in the between-toiles tree.
+  check("la boutique montre une famille a la fois", (await page.locator(".upgrade-row").count()) === 3);
+  check("les trois familles sont accessibles", (await page.locator(".sub-tab").count()) === 3);
+  await page.locator('.sub-tab[data-id="economie"]').click();
+  check(
+    "changer de famille change les axes",
+    (await page.locator('.upgrade-row:has-text("Alliage")').count()) === 1,
+  );
+  check("chaque axe montre sa progression", (await page.locator(".upgrade-row .track").count()) === 2);
+  await page.locator('.sub-tab[data-id="rail"]').click();
 
   await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
-  const tree = await page.locator(".upgrade-row").count();
-  check("l'arbre n'ouvre que ses racines et ses portes", tree > 6 && tree < 20, `${tree} noeuds`);
+  check("l'arbre s'ouvre par branches", (await page.locator(".sub-tab").count()) === 6);
+  await page.locator('.sub-tab[data-id="explosion"]').click();
+  // A locked node is listed, not hidden: the door says what to want, and the
+  // rows behind it say the door leads somewhere. They keep their name to
+  // themselves until it is opened.
   check(
-    "les branches restent fermees tant que la capacite ne l'est pas",
-    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 0,
+    "la branche montre sa porte et ses reglages",
+    (await page.locator(".upgrade-row").count()) === 3,
   );
+  const locked = page.locator('.upgrade-row[data-state="locked"]');
+  check("les reglages sont verrouilles", (await locked.count()) === 2);
+  check("un reglage verrouille n'a pas de prix", (await locked.first().locator(".price").innerText()) === "—");
+  check(
+    "il dit ce qui manque",
+    (await locked.first().locator(".meta").innerText()).includes("requis"),
+    await locked.first().locator(".meta").innerText(),
+  );
+  await page.locator('.sub-tab[data-id="racine"]').click();
   await page.locator('#upgrade-tabs button[data-tab="level"]').click();
 
   const balanceBefore = digits(await page.locator("#upgrade-balance").innerText());
@@ -292,6 +311,18 @@ try {
   await page.locator("#run-menu-close").click();
   check("le menu se referme", await page.locator("#run-menu").isHidden());
 
+  // The tree is reached from the end of an image, not only from the shop tab.
+  await page.locator("#menu").click();
+  await page.waitForSelector("#run-menu:not([hidden])", { timeout: 10000 });
+  await page.locator("#run-tree").click();
+  await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
+  check(
+    "le menu mene aux paliers permanents",
+    (await page.locator('#upgrade-tabs button[data-tab="permanent"]').getAttribute("data-active")) ===
+      "true",
+  );
+  await page.locator("#upgrade-close").click();
+
   console.log("\n— persistance et hors-ligne —");
   // Wait for the rail to go quiet, then for one autosave window on top of it.
   // The save is throttled, so reading the live counter while blocks are still
@@ -396,9 +427,10 @@ async function checkClearReward(browser, fixture) {
   check("les éclats sont au crédit du profil", shards === total, `${shards} au solde`);
 
   // A branch opens only when its capability is paid for — and then it is there.
+  await page.locator('.sub-tab[data-id="explosion"]').click();
   check(
-    "la branche est fermée avant sa capacité",
-    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 0,
+    "la branche est verrouillée avant sa capacité",
+    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 2,
   );
   await page.evaluate(() => {
     const meta = window.__game.getMeta();
@@ -406,11 +438,12 @@ async function checkClearReward(browser, fixture) {
     meta.buy("explosion");
     meta.buy("nuancier");
   });
-  await page.locator('#upgrade-tabs button[data-tab="level"]').click();
-  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  await page.locator('.sub-tab[data-id="racine"]').click();
+  await page.locator('.sub-tab[data-id="explosion"]').click();
   check(
-    "elle s'ouvre une fois la capacité achetée",
-    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 1,
+    "elle devient achetable une fois la capacité acquise",
+    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 0 &&
+      (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 1,
   );
 
   await ctx.close();

@@ -104,6 +104,10 @@
             <i></i>
             <span>l'image source n'est jamais stockée — seul le niveau quantifié l'est</span>
           </div>
+          <button id="import-tree" class="ghost-button ghost-meta" type="button" hidden>
+            <span class="label">Paliers permanents</span>
+            <span class="hint"><span id="import-shards">0</span> éclats à dépenser</span>
+          </button>
           <button id="resume-run" class="ghost-button" type="button" hidden>
             <span class="label">Reprendre la partie en cours</span>
             <span class="hint">rien n'a été perdu</span>
@@ -199,6 +203,7 @@
               </span>
             </div>
             <div id="upgrade-tabs" class="upgrade-tabs"></div>
+            <div id="upgrade-subtabs" class="upgrade-subtabs"></div>
             <div id="upgrade-batch" class="upgrade-batch"></div>
             <div id="upgrade-rows" class="upgrade-rows"></div>
             <button id="upgrade-close" class="cta" type="button">Reprendre</button>
@@ -216,6 +221,10 @@
             <p class="run-menu-note" id="run-menu-note"></p>
             <div class="run-menu-actions">
               <button id="run-next" class="cta" type="button" hidden>Passage suivant</button>
+              <button id="run-tree" class="ghost-button ghost-meta" type="button">
+                <span class="label">Paliers permanents</span>
+                <span class="hint">dépenser les éclats — ils ne se perdent jamais</span>
+              </button>
               <button id="run-restart" class="ghost-button" type="button">
                 <span class="label">Recommencer l'image</span>
                 <span class="hint">le plateau redevient entier — tu ne gardes que ce que le permanent te donne</span>
