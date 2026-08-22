@@ -75,18 +75,32 @@ export class GameScreen {
     this.debugPanel.hidden = !this.debugPanel.hidden;
   }
 
-  notify(message: string, kind: "info" | "error" = "info"): void {
+  notify(message: string, kind: "info" | "error" | "milestone" = "info", ms = 4000): void {
     this.toast.textContent = message;
     this.toast.dataset.kind = kind;
     this.toast.hidden = false;
     window.clearTimeout(this.toastTimer);
     this.toastTimer = window.setTimeout(() => {
       this.toast.hidden = true;
-    }, 6000);
+    }, ms);
   }
 
   announceMilestone(milestone: Milestone): void {
-    this.notify(`${formatPercent(milestone.progress, 0)} — ${milestone.label}`);
+    this.notify(`${formatPercent(milestone.progress, 0)} — ${milestone.label}`, "milestone");
+  }
+
+  /**
+   * A colour running out. Six seconds rather than four, because it is the one
+   * announcement that changes what the player can do next: a card has left the
+   * offers, and a bottleneck with it.
+   */
+  announceColorCleared(colorId: number, count: number, newToLibrary = false): void {
+    const suffix = newToLibrary ? " · nouvelle au nuancier" : "";
+    this.notify(
+      `Couleur #${colorId} épuisée · ${formatCount(count)} px${suffix}`,
+      "milestone",
+      6000,
+    );
   }
 
   setLevelLabel(label: string): void {
@@ -179,9 +193,11 @@ export class GameScreen {
       const point = railPoint(cannon.trackPosition, rect.width, rect.height);
       token.style.left = `${point.x}px`;
       token.style.top = `${point.y}px`;
-      token.textContent = cannon.unlimited ? "∞" : `${cannon.ammo}/${cannon.maxAmmo}`;
       token.dataset.dense = String(dense);
       token.dataset.empty = String(!cannon.unlimited && cannon.ammo === 0);
+      token.dataset.idle = String(cannon.idleFraction > 0.75);
+      const palette = world.palette[cannon.colorId];
+      token.style.background = cssColor(palette.r, palette.g, palette.b);
     }
   }
 

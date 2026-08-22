@@ -58,6 +58,58 @@ try {
     if (await card.count()) { await card.click(); await page.waitForTimeout(150); }
   }
   await page.waitForTimeout(1500);
+  if (process.env.SHOT_RAIL) {
+    // Close in until a board cell is a handful of screen pixels: the cannon is
+    // drawn at the board's own scale, so it is only legible when the board is.
+    await page.evaluate((withFx) => {
+      const game = window.__game;
+      if (withFx) {
+        const meta = game.getMeta();
+        meta.recordClear({ playablePixels: 200_000_000, paletteSize: 8, awkwardColors: 5, pass: 1 });
+        for (const id of ["explosion", "foudre", "feu"]) meta.buy(id);
+        for (let i = 0; i < 400; i++) { meta.buy("explosionProc"); meta.buy("souffle"); }
+      }
+      const cannon = game.getCombat().activeCannons[0];
+      // Freeze the rail: at 260 cells a second it would be a third of the way
+      // round the board by the time the shutter opens. With effects on, leave
+      // it crawling so something actually fires in frame.
+      for (const c of game.getCombat().activeCannons) c.tune(withFx ? 3 : 0);
+      const aim = cannon?.aim();
+      for (let i = 0; i < 8; i++) window.__controls.zoomIn();
+      if (aim) {
+        // Centre on the board edge the cannon straddles, not on the aim point:
+        // the aim sits outside the board and the sprite hangs back from it.
+        game.viewport.centerX = aim.axis === "row" ? (aim.direction > 0 ? 6 : 1018) : aim.x;
+        game.viewport.centerY = aim.axis === "column" ? (aim.direction > 0 ? 6 : 1018) : aim.y;
+      }
+      game.applyViewport();
+    }, Boolean(process.env.SHOT_FX));
+    await page.waitForTimeout(900);
+    await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
+  if (process.env.SHOT_LIBRARY) {
+    await page.evaluate(() => {
+      const meta = window.__game.getMeta();
+      // A profile a few dozen toiles in: enough holes for the grid to read.
+      let seed = 7;
+      const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+      for (let i = 0; i < 70; i++) {
+        meta.library.record({
+          r: Math.floor(rnd() * 256), g: Math.floor(rnd() * 256), b: Math.floor(rnd() * 256),
+          count: Math.floor(rnd() * 90000),
+        });
+      }
+    });
+    await page.locator("#pause").click();
+    await page.waitForSelector("#upgrade-panel:not([hidden])");
+    await page.locator('#upgrade-tabs button[data-tab="library"]').click();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
   if (process.env.SHOT_CLEAR) {
     await page.evaluate(() => {
       const world = window.__game.getWorld();

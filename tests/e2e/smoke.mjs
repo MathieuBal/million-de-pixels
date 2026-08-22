@@ -162,18 +162,37 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
-  // In game the shop stays short on purpose: six axes, three families. The
-  // capabilities and their numbers live in the between-toiles tree.
-  check("le panneau reste court en jeu", (await page.locator(".upgrade-row").count()) === 8);
-  check("les axes sont groupes par famille", (await page.locator(".upgrade-family").count()) === 3);
+  // In game the shop shows one family at a time: two axes on screen, not
+  // twelve. The capabilities and their numbers live in the between-toiles tree.
+  check("la boutique montre une famille a la fois", (await page.locator(".upgrade-row").count()) === 3);
+  check("les trois familles sont accessibles", (await page.locator(".sub-tab").count()) === 3);
+  await page.locator('.sub-tab[data-id="economie"]').click();
+  check(
+    "changer de famille change les axes",
+    (await page.locator('.upgrade-row:has-text("Alliage")').count()) === 1,
+  );
+  check("chaque axe montre sa progression", (await page.locator(".upgrade-row .track").count()) === 2);
+  await page.locator('.sub-tab[data-id="rail"]').click();
 
   await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
-  const tree = await page.locator(".upgrade-row").count();
-  check("l'arbre n'ouvre que ses racines et ses portes", tree > 6 && tree < 20, `${tree} noeuds`);
+  check("l'arbre s'ouvre par branches", (await page.locator(".sub-tab").count()) === 6);
+  await page.locator('.sub-tab[data-id="explosion"]').click();
+  // A locked node is listed, not hidden: the door says what to want, and the
+  // rows behind it say the door leads somewhere. They keep their name to
+  // themselves until it is opened.
   check(
-    "les branches restent fermees tant que la capacite ne l'est pas",
-    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 0,
+    "la branche montre sa porte et ses reglages",
+    (await page.locator(".upgrade-row").count()) === 3,
   );
+  const locked = page.locator('.upgrade-row[data-state="locked"]');
+  check("les reglages sont verrouilles", (await locked.count()) === 2);
+  check("un reglage verrouille n'a pas de prix", (await locked.first().locator(".price").innerText()) === "—");
+  check(
+    "il dit ce qui manque",
+    (await locked.first().locator(".meta").innerText()).includes("requis"),
+    await locked.first().locator(".meta").innerText(),
+  );
+  await page.locator('.sub-tab[data-id="racine"]').click();
   await page.locator('#upgrade-tabs button[data-tab="level"]').click();
 
   const balanceBefore = digits(await page.locator("#upgrade-balance").innerText());
@@ -273,6 +292,20 @@ try {
   await page.locator("#upgrade-close").click();
 
 
+  // The rail is drawn as cells of the board: the sprites have to exist, and
+  // the aimed-lane streak with them. Counting them is the only check available
+  // — what they look like is a screenshot's job, not an assertion's.
+  const railParticles = await page.evaluate(() => {
+    const layers = window.__game.boardLayer.children[1].children;
+    return layers.map((c) => (c.particleChildren ?? []).filter((p) => p.scaleX > 0).length);
+  });
+  check(
+    "les canons sont dessines en cases du plateau",
+    railParticles[1] > 20,
+    `${railParticles[1]} cellules`,
+  );
+  check("la voie visee est tracee", railParticles[0] >= 1, `${railParticles[0]} voies`);
+
   console.log("\n— sorties de partie —");
   await page.locator("#menu").click();
   await page.waitForSelector("#run-menu:not([hidden])", { timeout: 10000 });
@@ -291,6 +324,18 @@ try {
   );
   await page.locator("#run-menu-close").click();
   check("le menu se referme", await page.locator("#run-menu").isHidden());
+
+  // The tree is reached from the end of an image, not only from the shop tab.
+  await page.locator("#menu").click();
+  await page.waitForSelector("#run-menu:not([hidden])", { timeout: 10000 });
+  await page.locator("#run-tree").click();
+  await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
+  check(
+    "le menu mene aux paliers permanents",
+    (await page.locator('#upgrade-tabs button[data-tab="permanent"]').getAttribute("data-active")) ===
+      "true",
+  );
+  await page.locator("#upgrade-close").click();
 
   console.log("\n— persistance et hors-ligne —");
   // Wait for the rail to go quiet, then for one autosave window on top of it.
@@ -396,9 +441,10 @@ async function checkClearReward(browser, fixture) {
   check("les éclats sont au crédit du profil", shards === total, `${shards} au solde`);
 
   // A branch opens only when its capability is paid for — and then it is there.
+  await page.locator('.sub-tab[data-id="explosion"]').click();
   check(
-    "la branche est fermée avant sa capacité",
-    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 0,
+    "la branche est verrouillée avant sa capacité",
+    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 2,
   );
   await page.evaluate(() => {
     const meta = window.__game.getMeta();
@@ -406,11 +452,30 @@ async function checkClearReward(browser, fixture) {
     meta.buy("explosion");
     meta.buy("nuancier");
   });
-  await page.locator('#upgrade-tabs button[data-tab="level"]').click();
-  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  await page.locator('.sub-tab[data-id="racine"]').click();
+  await page.locator('.sub-tab[data-id="explosion"]').click();
   check(
-    "elle s'ouvre une fois la capacité achetée",
-    (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 1,
+    "elle devient achetable une fois la capacité acquise",
+    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 0 &&
+      (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 1,
+  );
+
+  // The library: a hex is catalogued by clearing a colour that snaps to it, and
+  // pays passively from then on.
+  await page.locator('#upgrade-tabs button[data-tab="library"]').click();
+  await page.waitForTimeout(300);
+  const cells = await page.locator(".hex-cell").count();
+  const found = await page.locator('.hex-cell[data-found="true"]').count();
+  check("le nuancier a un total", cells === 216, `${cells} teintes`);
+  check(
+    "terminer une toile en catalogue",
+    found > 0 && found <= 8,
+    `${found} teintes sur ${cells}`,
+  );
+  check(
+    "il n'y a ni onglet de famille ni lot sur cette page",
+    (await page.locator("#upgrade-subtabs").isHidden()) &&
+      (await page.locator("#upgrade-batch").isHidden()),
   );
 
   await ctx.close();

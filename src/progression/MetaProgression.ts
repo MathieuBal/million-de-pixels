@@ -1,3 +1,4 @@
+import { ColorLibrary, type LibrarySnapshot } from "./ColorLibrary";
 import type { UpgradeId, UpgradeLevels } from "./Upgrades";
 
 /**
@@ -79,6 +80,8 @@ export interface MetaUpgradeDefinition {
   id: MetaUpgradeId;
   kind: MetaKind;
   branch: MetaBranch;
+  /** Heading the node sits under inside its branch. */
+  ladder: string;
   label: string;
   glyph: string;
   description: string;
@@ -107,6 +110,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   // --- Fondations -------------------------------------------------------
   {
     id: "negoce",
+    ladder: "Économie",
     kind: "point",
     branch: "racine",
     label: "Négoce",
@@ -120,6 +124,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "fondation",
+    ladder: "Départ",
     kind: "point",
     branch: "racine",
     label: "Fondation",
@@ -132,6 +137,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "atelier",
+    ladder: "Départ",
     kind: "point",
     branch: "racine",
     label: "Atelier",
@@ -144,6 +150,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "elan",
+    ladder: "Économie",
     kind: "point",
     branch: "racine",
     label: "Élan",
@@ -156,6 +163,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "prospecteur",
+    ladder: "Économie",
     kind: "point",
     branch: "racine",
     label: "Prospecteur",
@@ -168,6 +176,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "somnambule",
+    ladder: "Départ",
     kind: "point",
     branch: "racine",
     label: "Somnambule",
@@ -180,6 +189,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "heritage",
+    ladder: "Économie",
     kind: "point",
     branch: "racine",
     label: "Héritage",
@@ -192,6 +202,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "memoire",
+    ladder: "Départ",
     kind: "point",
     branch: "racine",
     label: "Mémoire",
@@ -205,6 +216,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "socle",
+    ladder: "Départ",
     kind: "point",
     branch: "racine",
     label: "Socle",
@@ -219,6 +231,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   // --- Capacités --------------------------------------------------------
   {
     id: "perce",
+    ladder: "Capacité",
     kind: "unlock",
     branch: "perce",
     label: "Perce",
@@ -233,6 +246,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "perceProc",
+    ladder: "Réglages",
     kind: "stat",
     branch: "perce",
     label: "Précision",
@@ -246,6 +260,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "pointe",
+    ladder: "Réglages",
     kind: "stat",
     branch: "perce",
     label: "Pointe",
@@ -259,6 +274,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "explosion",
+    ladder: "Capacité",
     kind: "unlock",
     branch: "explosion",
     label: "Explosion",
@@ -272,6 +288,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "explosionProc",
+    ladder: "Réglages",
     kind: "stat",
     branch: "explosion",
     label: "Amorce",
@@ -285,6 +302,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "souffle",
+    ladder: "Réglages",
     kind: "stat",
     branch: "explosion",
     label: "Souffle",
@@ -298,6 +316,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "foudre",
+    ladder: "Capacité",
     kind: "unlock",
     branch: "foudre",
     label: "Foudre",
@@ -311,6 +330,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "foudreProc",
+    ladder: "Réglages",
     kind: "stat",
     branch: "foudre",
     label: "Charge",
@@ -324,6 +344,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "chaine",
+    ladder: "Réglages",
     kind: "stat",
     branch: "foudre",
     label: "Rebond",
@@ -337,6 +358,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "feu",
+    ladder: "Capacité",
     kind: "unlock",
     branch: "feu",
     label: "Feu",
@@ -351,6 +373,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "feuProc",
+    ladder: "Réglages",
     kind: "stat",
     branch: "feu",
     label: "Braise",
@@ -364,6 +387,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "brasier",
+    ladder: "Réglages",
     kind: "stat",
     branch: "feu",
     label: "Brasier",
@@ -379,6 +403,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   // --- Confort ----------------------------------------------------------
   {
     id: "nuancier",
+    ladder: "Lecture",
     kind: "unlock",
     branch: "confort",
     label: "Nuancier",
@@ -393,6 +418,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "filtre",
+    ladder: "Étal",
     kind: "unlock",
     branch: "confort",
     label: "Trieuse",
@@ -406,6 +432,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "auto",
+    ladder: "Étal",
     kind: "unlock",
     branch: "confort",
     label: "Automate",
@@ -419,6 +446,7 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
   },
   {
     id: "emplette",
+    ladder: "Étal",
     kind: "unlock",
     branch: "confort",
     label: "Emplette",
@@ -562,6 +590,8 @@ export interface MetaSnapshot {
   clears: number;
   /** Level upgrades as they stood when the last toile was cleared. */
   lastLevels: UpgradeLevels;
+  /** Colours finished off, kept for good. */
+  library: LibrarySnapshot;
 }
 
 export class MetaProgression {
@@ -570,6 +600,8 @@ export class MetaProgression {
   private spent: number;
   private clears: number;
   private lastLevels: UpgradeLevels;
+  /** The colour book. Profile state, like everything else here. */
+  readonly library: ColorLibrary;
 
   constructor(snapshot: Partial<MetaSnapshot> = {}) {
     this.levels = new Map(META_UPGRADES.map((u) => [u.id, snapshot.levels?.[u.id] ?? 0]));
@@ -577,6 +609,7 @@ export class MetaProgression {
     this.spent = snapshot.spent ?? 0;
     this.clears = snapshot.clears ?? 0;
     this.lastLevels = { ...(snapshot.lastLevels ?? {}) };
+    this.library = ColorLibrary.restore(snapshot.library);
   }
 
   get balance(): number {
@@ -599,6 +632,19 @@ export class MetaProgression {
     const definition = META_BY_ID.get(id);
     if (!definition) return true;
     return definition.maxLevel !== undefined && this.levelOf(id) >= definition.maxLevel;
+  }
+
+  /**
+   * The nodes above this one that have not been bought yet.
+   *
+   * A locked node is still listed — showing "here is the next thing to want" is
+   * the whole reason the tree has doors. What it must not do is pretend to be
+   * buyable, so the panel reads this to say *what* is missing.
+   */
+  missingFor(id: MetaUpgradeId): MetaUpgradeId[] {
+    const definition = META_BY_ID.get(id);
+    if (!definition?.requires) return [];
+    return definition.requires.filter((parent) => this.levelOf(parent) === 0);
   }
 
   /** True once every node this one hangs off has been bought. */
@@ -698,11 +744,15 @@ export class MetaProgression {
     const branch = (unlock: MetaUpgradeId, id: MetaUpgradeId): number =>
       this.levelOf(unlock) > 0 ? this.valueOf(id) : 0;
 
+    // The library pays passively for work already finished: it multiplies what
+    // an image is worth and what an absence produces, and touches nothing else.
+    const book = this.library.bonus();
+
     return {
       startingFragments: this.valueOf("heritage"),
-      fragmentMultiplier: this.valueOf("elan"),
+      fragmentMultiplier: this.valueOf("elan") * book.fragmentMultiplier,
       extraCannons: this.valueOf("socle"),
-      offlineMultiplier: this.valueOf("somnambule"),
+      offlineMultiplier: this.valueOf("somnambule") * book.offlineMultiplier,
       speedMultiplier: this.valueOf("fondation"),
       ammoMultiplier: this.valueOf("atelier"),
       shardMultiplier: this.valueOf("prospecteur"),
@@ -734,6 +784,7 @@ export class MetaProgression {
       spent: this.spent,
       clears: this.clears,
       lastLevels: { ...this.lastLevels },
+      library: this.library.serialize(),
     };
   }
 

@@ -194,6 +194,89 @@ describe("resolveEffects", () => {
     });
   });
 
+  describe("traces", () => {
+    // The renderer draws what the simulation actually did. Passing the shape up
+    // costs nothing and stops the renderer inventing a plausible one — which
+    // would be gameplay decided in the wrong place.
+    it("hands the blast its centre and its radius", () => {
+      const world = blockWorld(9);
+      const center = 104 * WORLD_WIDTH + 104;
+      const out = resolveEffects(
+        world, 0, FROM_LEFT, center,
+        always({ explosionChance: 1, explosionRadius: 3 }),
+        new XorShift32(1), 999,
+      );
+
+      expect(out.marks).toHaveLength(1);
+      expect(out.marks[0]).toEqual({ kind: "explode", center, radius: 3 });
+    });
+
+    it("hands the arc its walk, in order, starting where it was struck", () => {
+      const world = blockWorld(9);
+      const center = 104 * WORLD_WIDTH + 104;
+      const out = resolveEffects(
+        world, 0, FROM_LEFT, center,
+        always({ lightningChance: 1, lightningArcs: 4 }),
+        new XorShift32(7), 999,
+      );
+
+      const mark = out.marks[0];
+      expect(mark.kind).toBe("arc");
+      if (mark.kind !== "arc") return;
+      expect(mark.path[0]).toBe(center);
+      expect(mark.path).toHaveLength(5);
+      // Every step touches the one before it: a walk, not a scatter.
+      for (let i = 1; i < mark.path.length; i++) {
+        const dx = Math.abs((mark.path[i] % WORLD_WIDTH) - (mark.path[i - 1] % WORLD_WIDTH));
+        const dy = Math.abs(
+          ((mark.path[i] / WORLD_WIDTH) | 0) - ((mark.path[i - 1] / WORLD_WIDTH) | 0),
+        );
+        expect(dx + dy).toBe(1);
+      }
+    });
+
+    it("hands the fire its front, in the order it spread", () => {
+      const world = blockWorld(9);
+      const center = 104 * WORLD_WIDTH + 104;
+      const out = resolveEffects(
+        world, 0, FROM_LEFT, center,
+        always({ fireChance: 1, fireSpread: 8 }),
+        new XorShift32(5), 999,
+      );
+
+      const mark = out.marks[0];
+      expect(mark.kind).toBe("burn");
+      if (mark.kind !== "burn") return;
+      expect(mark.path[0]).toBe(center);
+      expect(mark.path).toHaveLength(9);
+    });
+
+    it("hands the pierce both ends of what it went through", () => {
+      const world = rowWorld([1, 1, 0]);
+      const out = resolveEffects(
+        world, 0, FROM_LEFT, -1,
+        always({ pierceChance: 1, pierceDepth: 2 }),
+        new XorShift32(1), 10,
+      );
+
+      const mark = out.marks[0];
+      expect(mark.kind).toBe("pierce");
+      if (mark.kind !== "pierce") return;
+      // From the surface it looked past, to the cell it actually took.
+      expect(mark.from).toBe(0);
+      expect(mark.to).toBe(2);
+    });
+
+    it("leaves no trace when nothing fired", () => {
+      const world = blockWorld(6);
+      const out = resolveEffects(
+        world, 0, FROM_LEFT, 100 * WORLD_WIDTH + 100,
+        NO_EFFECTS, new XorShift32(1), 999,
+      );
+      expect(out.marks).toEqual([]);
+    });
+  });
+
   it("is deterministic for a given generator state", () => {
     const play = () => {
       const world = blockWorld(9);

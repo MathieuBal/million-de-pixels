@@ -25,6 +25,8 @@ import { SAVE_SCHEMA_VERSION } from "../persistence/schema";
 import { PixelTextureRenderer } from "../rendering/PixelTextureRenderer";
 import { Viewport, type ScreenRect } from "../rendering/Viewport";
 import { BurstRenderer } from "../rendering/BurstRenderer";
+import { CannonRenderer } from "../rendering/CannonRenderer";
+import { Shaker } from "../rendering/Shaker";
 import {
   DESKTOP_BUDGET,
   MOBILE_BUDGET,
@@ -63,6 +65,8 @@ export interface GameEvents {
   onLevelPrepared?: (palette: PaletteEntry[], colorId: Uint8Array, width: number) => void;
   onLevelReady?: (world: PixelWorld) => void;
   onMilestone?: (milestone: Milestone) => void;
+  /** A colour just ran out. The card leaves the offers with it. */
+  onColorCleared?: (colorId: number, count: number, newToLibrary: boolean) => void;
   /** The board is empty. Fired once per pass, the moment the last pixel goes. */
   onLevelCleared?: (pass: number, reward: ClearReward) => void;
   /** The level took over and is finishing itself. Fired once per pass. */
@@ -89,6 +93,8 @@ export class GameController {
   readonly boardLayer = new Container();
   readonly profiler = new Profiler();
   readonly viewport = new Viewport();
+  /** Rationed on purpose: see `Shaker`. */
+  readonly shaker = new Shaker();
 
   private readonly imageClient = new ImageWorkerClient();
   private readonly idleClient = new IdleWorkerClient();
@@ -101,6 +107,7 @@ export class GameController {
   private combat: CombatSimulator | null = null;
   private board: PixelTextureRenderer | null = null;
   private bursts: BurstRenderer | null = null;
+  private rail: CannonRenderer | null = null;
   private milestones = new MilestoneTracker();
   private stats: ColorStats | null = null;
   private upgrades = new UpgradeState();
@@ -115,6 +122,8 @@ export class GameController {
   private completions = 0;
   /** Latched so clearing the board announces itself once, not every frame. */
   private clearedAnnounced = false;
+  /** Colours already announced, so the banner fires once each. */
+  private clearedColors = new Set<number>();
   private createdAtEpochMs = Date.now();
   private lastSimulatedAtEpochMs = Date.now();
 
@@ -275,6 +284,21 @@ export class GameController {
     // pierce, explode, arc or burn until the talent tree paid for it once.
     this.combat?.setEffects(bonus.effects);
     this.combat?.setChances(effects.doubleBiteChance, effects.twinChance);
+
+    // The muzzle says what the cannon can do. Only the rarest capability owned
+    // is shown: four markings at once would be four illegible ones.
+    const owned = bonus.effects;
+    this.rail?.setCapability(
+      owned.fireChance > 0
+        ? "feu"
+        : owned.lightningChance > 0
+          ? "foudre"
+          : owned.explosionChance > 0
+            ? "eclat"
+            : owned.pierceChance > 0
+              ? "perce"
+              : null,
+    );
     this.generator?.setAmmoPerLoad(effects.ammoPerLoad);
     this.queue?.setSize(effects.visibleLoads);
   }
@@ -421,6 +445,11 @@ export class GameController {
 
     this.world = world;
     this.clearedAnnounced = false;
+    this.clearedColors = new Set();
+    for (let colour = 0; colour < world.paletteSize; colour++) {
+      // A colour already gone when the level loads was not cleared just now.
+      if (world.aliveByColor(colour) === 0) this.clearedColors.add(colour);
+    }
     this.milestones = new MilestoneTracker(world.progress());
     this.stats = new ColorStats(world);
 
@@ -446,8 +475,10 @@ export class GameController {
       uploadHz: this.lod.currentBudget.textureUploadHz,
     });
     this.bursts = new BurstRenderer(world.palette);
+    this.rail = new CannonRenderer(world.palette);
 
     this.boardLayer.addChild(this.board.mesh);
+    this.boardLayer.addChild(this.rail.view);
     this.boardLayer.addChild(this.bursts.view);
 
     // Balls are one cell across, so the level opens close enough for a
@@ -491,6 +522,11 @@ export class GameController {
       this.bursts.destroy();
       this.bursts = null;
     }
+    if (this.rail) {
+      this.boardLayer.removeChild(this.rail.view);
+      this.rail.destroy();
+      this.rail = null;
+    }
     this.world?.onDestroy(null);
     this.combat = null;
     this.queue = null;
@@ -513,7 +549,11 @@ export class GameController {
   /** Pushes the camera onto the render container. */
   applyViewport(): void {
     this.boardLayer.scale.set(this.viewport.scale);
-    this.boardLayer.position.set(this.viewport.offsetX(), this.viewport.offsetY());
+    const shake = this.shaker.offset();
+    this.boardLayer.position.set(
+      this.viewport.offsetX() + shake.x,
+      this.viewport.offsetY() + shake.y,
+    );
   }
 
   // --- Loop ---------------------------------------------------------------
@@ -547,12 +587,38 @@ export class GameController {
 
     const stats = this.combat.getStats();
 
-    this.bursts?.syncCannons(
-      this.combat.activeCannons.map((cannon) => ({ aim: cannon.aim(), colorId: cannon.colorId })),
+    // The rail reads the cannons as they are — position, stock, whether the
+    // lane in front of them holds anything — and draws them as cells of the
+    // board. Nothing here is interpolated: a corner is crossed in one frame.
+    const world = this.world;
+    this.rail?.sync(
+      this.combat.activeCannons.map((cannon) => {
+        const aim = cannon.aim();
+        return {
+          id: cannon.id,
+          aim,
+          colorId: cannon.colorId,
+          ammo: cannon.ammo,
+          maxAmmo: cannon.maxAmmo,
+          unlimited: cannon.unlimited,
+          idle: cannon.idleFraction > 0.75,
+          frontIndex: world.surface.frontIndex(aim.axis, aim.lane, aim.direction),
+        };
+      }),
+      nowMs,
     );
     this.bursts?.spawnBursts(this.combat.bursts);
     this.bursts?.spawnImpacts(this.combat.visibleImpacts);
+    this.bursts?.spawnEffects(this.combat.effectMarks);
     this.bursts?.update(deltaMs);
+
+    // A blast is the one ordinary event loud enough to move the camera, and
+    // only because it is rare: an impact never does.
+    for (const { mark } of this.combat.effectMarks) {
+      if (mark.kind === "explode") this.shaker.request(2, 90);
+    }
+    this.shaker.update(deltaMs);
+    if (this.shaker.active) this.applyViewport();
 
     if (this.world.isDirty()) {
       this.board.markDirty();
@@ -565,6 +631,24 @@ export class GameController {
     // per-colour effort is no longer declared by a cadence — it is measured
     // from what actually stopped existing.
     this.stats?.sample(nowMs);
+
+    // A colour running out is the loudest thing that happens during a run: it
+    // is a whole card gone from the offers and a whole bottleneck resolved.
+    for (let colour = 0; colour < this.world.paletteSize; colour++) {
+      if (this.world.aliveByColor(colour) > 0 || this.clearedColors.has(colour)) continue;
+      this.clearedColors.add(colour);
+      this.shaker.request(3, 140);
+
+      // A colour cleared outright is the one moment in a run that is
+      // unarguably finished — which is exactly what the library collects.
+      const entry = this.world.palette[colour];
+      const slot = entry
+        ? this.meta.library.record({ r: entry.r, g: entry.g, b: entry.b, count: entry.count })
+        : null;
+      if (slot) void this.saveMeta();
+
+      this.events.onColorCleared?.(colour, entry?.count ?? 0, slot !== null);
+    }
 
     const crossed = this.milestones.update(this.world.progress());
     for (const milestone of crossed) this.events.onMilestone?.(milestone);

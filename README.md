@@ -148,6 +148,48 @@ exposée en une lecture, donc rien ne balaye la voie. La règle fondamentale ne
 bouge pas : **une munition détruit au plus un bloc**, et la première couleur
 étrangère arrête la morsure sans jamais être détruite.
 
+**Le canon est fait de la même matière que l'image.** Une case du sprite est une
+case du plateau, à la même échelle, donc il ne peut pas jurer avec la toile
+importée. Deux lectures doivent être gratuites : la **bande de couleur** en
+travers du socle dit ce qu'il vise, et la **jauge** juste en dessous dit ce qui
+reste — des segments qui s'éteignent, jamais un chiffre. Une munition n'est
+dépensée que sur un pixel réellement mort, donc la jauge ne peut pas mentir sur
+ce qui reste à peler.
+
+Trois silhouettes selon le chargeur acheté : c'est le seul retour d'amélioration
+qui n'a pas besoin d'un nombre. Le canon chevauche le rail — moitié dehors,
+moitié sur la première rangée de la voie qu'il s'apprête à peler — et pivote
+avec le côté qu'il longe. La rotation **ré-indexe la grille** au lieu
+d'interpoler : un coin se franchit en une frame, sans orientation intermédiaire
+qui étalerait les pixels. Une raie de 1 px court jusqu'à la première case solide
+de la voie : c'est la seule lecture honnête de sa portée. Au-delà de douze
+canons, les sprites se chevauchent en bouillie et le rail retombe sur des jetons
+compacts — la bande de couleur seule, la seule lecture qui tienne à cette
+densité.
+
+**Le tir ordinaire est sec.** C'est 99 % de ce que le joueur voit : un flash
+d'exactement une frame sur la case qui meurt, quatre éclats carrés d'une case
+qui s'éteignent en 180 ms, et rien d'autre. Pas de traînée, pas de poussière,
+pas de secousse. Au-delà de **400 impacts sur une frame**, les éclats cessent
+d'être émis et le flash porte seul — un seuil dur, pas un budget à négocier : la
+simulation a déjà tout résolu quand le rendu s'exécute, et elle n'attend jamais
+une particule.
+
+**Le spectacle est rationné à ce qui est rare.** Chaque spécialisation a sa forme,
+et la forme vient de la simulation — seule elle sait quelles cases ont réellement
+été prises, et dans quel ordre. Perce trace une raie fine à travers ce qu'il a
+regardé par-dessus, sans rien laisser au bout : ce qu'il a traversé est toujours
+debout et doit en avoir l'air. Éclat ouvre un anneau jusqu'au rayon réellement
+atteint. Foudre allume sa polyligne un saut par frame. Incendie avance en front,
+en braises qui gardent leur chaleur quelle que soit la couleur mangée.
+
+La **secousse** est rationnée plus durement encore : un impact ordinaire ne
+secoue jamais — à des centaines par seconde le plateau ne serait jamais immobile,
+et un tremblement permanent n'est pas un effet mais un défaut. Elle est réservée
+à un éclat qui tombe, à une couleur qui s'épuise, à la finale. Une demande ne
+s'ajoute jamais à celle en cours : la plus forte gagne, deux éclats dans la même
+frame ne secouent pas deux fois plus.
+
 **Découplage morsure / spectacle.** Une morsure détruit instantanément : une bille
 qui voyagerait *après* la disparition du pixel serait un mensonge visuel, donc il
 n'y a plus de projectiles mobiles. `BurstRenderer` dessine des étincelles
@@ -231,8 +273,14 @@ repartir des valeurs de base, sinon la première passe de chaque image après la
 première serait finie avant d'avoir commencé. Restait à donner un intérêt à
 terminer une toile — ce sont les **éclats**.
 
-L'arbre a trois sortes de nœud, parce qu'ils répondent à trois questions
-différentes.
+**En jeu, la boutique montre une famille à la fois** — trois onglets, deux ou
+trois axes à l'écran, jamais douze. Chaque ligne dit la valeur qu'elle a et
+celle que l'achat donnerait, jamais un pourcentage abstrait, et la barre sous la
+ligne est la progression sur la piste de l'axe. Un axe maxé reste en place,
+éteint : « celui-là est fini » est une information.
+
+L'arbre s'ouvre **branche par branche**, et il a trois sortes de nœud, parce
+qu'ils répondent à trois questions différentes.
 
 **`point` — une seule case qu'on fait monter, sans plafond.** Un cinquième de
 pour cent à la fois, avec un prix qui monte *linéairement* : `base + points ×
@@ -265,9 +313,19 @@ l'a pas payé une fois.
 
 **`stat` — un nœud `point` derrière une porte.** Rayon, rebonds, propagation,
 chance de proc : les nombres qui ne veulent rien dire tant que la capacité
-n'existe pas. Une branche n'apparaît qu'une fois sa capacité achetée — afficher
-vingt-cinq lignes grisées à la première toile dirait « voici tout ce que tu n'as
-pas », alors que la porte seule dit « voici la prochaine chose à vouloir ».
+n'existe pas.
+
+Un nœud verrouillé est **listé, pas caché**. Le cacher ne dit rien ; montrer la
+porte dit « voici la prochaine chose à vouloir », et montrer un réglage derrière
+une porte fermée dit à quoi la porte sert. Ce qu'un nœud verrouillé ne doit
+jamais faire, c'est avoir l'air achetable — il annonce donc ce qui manque à la
+place d'un prix, et garde son nom pour lui jusqu'à l'ouverture.
+
+Les nœuds sans plafond affichent le **rang atteint** (`p. 34`), pas une barre :
+il n'y a pas de maximum vers lequel la remplir.
+
+L'arbre se rejoint depuis le bilan de fin d'image — le moment où on a des éclats
+et une raison de penser à la toile suivante — ou depuis l'accueil d'import.
 
 **Les trois effets doivent se ressembler le moins possible**, sinon c'est une
 amélioration achetée trois fois. L'explosion estampe un disque sur l'image sans
@@ -303,6 +361,31 @@ Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs ra
 
 Ils sont rangés dans le magasin de réglages, pas dans une sauvegarde de niveau,
 parce que c'est exactement ce qu'ils sont : de l'état de profil.
+
+### Le nuancier
+
+Deux cent seize teintes — chaque canal ramené à l'un de six niveaux, ce qui donne
+les hexadécimaux `#000000`, `#003366`, `#FF6699`… Ce nombre *est* l'intérêt : une
+collection a besoin d'un dénominateur. Des valeurs exactes donneraient des
+milliers d'entrées presque identiques et un livre sans dernière page, ce qui est
+l'inverse de ce à quoi sert une collection.
+
+Une teinte est cataloguée quand une couleur qui s'y rattache est **épuisée
+entièrement** — le seul moment d'une partie qui soit indiscutablement fini : la
+case quitte l'étal, un goulot se résout, le compteur touche zéro et y reste.
+Cataloguer chaque couleur dont un pixel a été pris remplirait la grille dans les
+trente premières secondes de la première toile.
+
+Chaque teinte paie **+0,15 % de fragments et de production hors-ligne**, à vie.
+La bibliothèque est un relevé de travail déjà fait : la payer en puissance de
+combat en ferait un deuxième arbre d'améliorations sans aucun de ses choix. Une
+grille pleine vaut +32 % sur les deux — réel, et jamais la raison de jouer.
+
+La grille se lit en douze colonnes : les six niveaux de bleu d'un même couple
+rouge-vert tiennent sur une ligne et demie, donc les couleurs voisines restent
+ensemble et un trou dans les rouges se voit comme un trou. La pastille montre le
+**spécimen tel qu'il était sur le plateau**, pas la valeur de grille sous
+laquelle il a été classé.
 
 ### Le confort se gagne
 

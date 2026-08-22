@@ -7,7 +7,12 @@ import type { PixelWorld } from "../world/PixelWorld";
 import { VisualLODController } from "../rendering/VisualLODController";
 import { crossedLanes, PERIMETER } from "./Cannon";
 import { BITE_DEPTH, resolveLaneBurst, type BurstEvent } from "./LineBurst";
-import { NO_EFFECTS, resolveEffects, type EffectLoadout } from "./SpecialEffects";
+import {
+  NO_EFFECTS,
+  resolveEffects,
+  type EffectLoadout,
+  type EffectMark,
+} from "./SpecialEffects";
 import type { Rng } from "../rng/XorShift32";
 import { XorShift32 } from "../rng/XorShift32";
 
@@ -103,6 +108,8 @@ export class CombatSimulator {
   readonly visibleImpacts: ImpactEvent[] = [];
   /** Bursts resolved this frame, for the tracer and the future effects. */
   readonly bursts: BurstEvent[] = [];
+  /** Shapes the specialisations left this frame, for the renderer to trace. */
+  readonly effectMarks: Array<{ mark: EffectMark; colorId: number }> = [];
 
   private readonly cannons: ActiveCannon[] = [];
   private readonly options: Required<CombatOptions>;
@@ -243,6 +250,7 @@ export class CombatSimulator {
     this.stats.destroyed = 0;
     this.visibleImpacts.length = 0;
     this.bursts.length = 0;
+    this.effectMarks.length = 0;
   }
 
   /**
@@ -405,6 +413,9 @@ export class CombatSimulator {
         burst.destroyed += extra.destroyed;
         if (burst.firstIndex < 0) burst.firstIndex = extra.touched[0] ?? -1;
         this.sampleEffect(extra.touched, cannon.colorId);
+        for (const mark of extra.marks) {
+          this.effectMarks.push({ mark, colorId: cannon.colorId });
+        }
       }
 
       if (burst.destroyed === 0) continue;
