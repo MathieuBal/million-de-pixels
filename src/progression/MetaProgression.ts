@@ -628,6 +628,44 @@ export class MetaProgression {
     return true;
   }
 
+  /** Buys up to `count` points, stopping at the balance or a ceiling. */
+  buyMany(id: MetaUpgradeId, count: number): number {
+    let bought = 0;
+    while (bought < count && this.buy(id)) bought++;
+    return bought;
+  }
+
+  /**
+   * What the next `count` points would cost, and how many are within reach.
+   *
+   * A `point` node's price creeps with every point already spent, so ten points
+   * are never ten times the first. The panel has to be able to say what a batch
+   * costs before the player commits to it.
+   */
+  costOf(id: MetaUpgradeId, count: number): { levels: number; price: number } {
+    const definition = META_BY_ID.get(id);
+    if (!definition || !this.isAvailable(id)) return { levels: 0, price: 0 };
+
+    let level = this.levelOf(id);
+    let price = 0;
+    let levels = 0;
+
+    while (levels < count) {
+      if (definition.maxLevel !== undefined && level >= definition.maxLevel) break;
+      const step = Math.max(1, Math.ceil(definition.basePrice + level * definition.priceStep));
+      if (price + step > this.balance) break;
+      price += step;
+      level++;
+      levels++;
+    }
+
+    return { levels, price };
+  }
+
+  affordableLevels(id: MetaUpgradeId): number {
+    return this.costOf(id, Number.MAX_SAFE_INTEGER).levels;
+  }
+
   /**
    * Records a cleared toile and pays for it, itemised.
    *

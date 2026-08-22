@@ -164,7 +164,7 @@ try {
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
   // In game the shop stays short on purpose: six axes, three families. The
   // capabilities and their numbers live in the between-toiles tree.
-  check("le panneau reste court en jeu", (await page.locator(".upgrade-row").count()) === 6);
+  check("le panneau reste court en jeu", (await page.locator(".upgrade-row").count()) === 8);
   check("les axes sont groupes par famille", (await page.locator(".upgrade-family").count()) === 3);
 
   await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
@@ -241,6 +241,37 @@ try {
   const rateAfter = digits((await perfPanel(page))["Blocs/s"]);
   await page.keyboard.press("Alt+d");
   console.log(`        ${bought} ameliorations achetees · ${rateBefore} → ${rateAfter} blocs/s`);
+
+  // ×1 / ×10 / max: the batch has to change what a click actually buys. Last,
+  // because buying ten of anything spends what the single-purchase check needs.
+  // Bank enough for a real batch: ×10 buys what the balance allows, so on an
+  // empty purse it buys one and proves nothing.
+  for (let i = 0; i < 25; i++) {
+    const button = page.locator("#cards button:not([disabled])").first();
+    if ((await button.count()) > 0) await button.click();
+    await page.waitForTimeout(600);
+  }
+
+  await page.locator("#pause").click();
+  await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
+  check("la boutique offre ×1, ×10 et max", (await page.locator(".batch-button").count()) === 3);
+  await page.locator('.batch-button[data-size="10"]').click();
+  await page.waitForTimeout(150);
+  const batchLabel = await page.locator(".upgrade-row .price:not([disabled])").first().innerText();
+  check("×10 annonce le lot", /×\d/.test(batchLabel), batchLabel.replace(/\n/g, " "));
+
+  const levelBefore = firstNumber(
+    (await page.locator(".upgrade-row .name").first().innerText()).split("niv.")[1] ?? "0",
+  );
+  await page.locator(".upgrade-row .price:not([disabled])").first().click();
+  await page.waitForTimeout(200);
+  const levelAfter = firstNumber(
+    (await page.locator(".upgrade-row .name").first().innerText()).split("niv.")[1] ?? "0",
+  );
+  check("un clic ×10 monte de plusieurs niveaux", levelAfter - levelBefore > 1, `${levelBefore} → ${levelAfter}`);
+  await page.locator('.batch-button[data-size="1"]').click();
+  await page.locator("#upgrade-close").click();
+
 
   console.log("\n— sorties de partie —");
   await page.locator("#menu").click();

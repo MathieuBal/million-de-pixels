@@ -745,6 +745,26 @@ html, body {
 .palette-cell[data-state="gone"] { opacity: 0.35; }
 .palette-cell[data-state="gone"] .swatch { filter: grayscale(1); }
 
+.upgrade-batch { display: flex; gap: 6px; }
+.batch-button {
+  flex: 1;
+  padding: 6px;
+  border-radius: 9px;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.batch-button[data-active="true"] { border-color: var(--accent); color: var(--accent); }
+.upgrade-row .price small { display: block; font-size: 10px; opacity: 0.75; line-height: 1.1; }
+/* What the axis is for, under what it is currently worth. */
+.upgrade-row .what { font-size: 11px; color: var(--muted-3); line-height: 1.3; }
+.upgrade-row[data-kind="unlock"] .what { color: var(--muted); font-size: 12px; }
+.upgrade-row .meta:empty { display: none; }
+
 .upgrade-tabs { display: flex; gap: 6px; }
 .upgrade-tab {
   flex: 1;
