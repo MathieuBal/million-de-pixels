@@ -33,7 +33,7 @@ import {
   VisualLODController,
 } from "../rendering/VisualLODController";
 import { RNG_ALGORITHM, XorShift32 } from "../rng/XorShift32";
-import { UpgradeState, type UpgradeId } from "../progression/Upgrades";
+import { UpgradeState, type UpgradeEffects, type UpgradeId } from "../progression/Upgrades";
 import {
   MetaProgression,
   type ClearReward,
@@ -42,6 +42,19 @@ import {
 } from "../progression/MetaProgression";
 import { ColorStats } from "../world/ColorStats";
 import { PixelWorld } from "../world/PixelWorld";
+import {
+  DEFAULT_DOCTRINE,
+  applyDoctrine,
+  doctrineOf,
+  type DoctrineId,
+} from "../progression/Doctrine";
+import {
+  ImageGallery,
+  hashImage,
+  thumbnailOf,
+  type ClearOutcome,
+  type GallerySnapshot,
+} from "../progression/ImageGallery";
 import { isMobileProfile } from "./FeatureDetection";
 import { MilestoneTracker, type Milestone } from "./milestones";
 import { Profiler } from "./Profiler";
@@ -68,7 +81,7 @@ export interface GameEvents {
   /** A colour just ran out. The card leaves the offers with it. */
   onColorCleared?: (colorId: number, count: number, newToLibrary: boolean) => void;
   /** The board is empty. Fired once per pass, the moment the last pixel goes. */
-  onLevelCleared?: (pass: number, reward: ClearReward) => void;
+  onLevelCleared?: (pass: number, reward: ClearReward, time: ClearOutcome | null) => void;
   /** The level took over and is finishing itself. Fired once per pass. */
   onFinale?: () => void;
   onOfflineReport?: (report: OfflineReport) => void;
@@ -78,6 +91,15 @@ export interface GameEvents {
 const PROFILE_ID = "local";
 /** Settings key holding the profile's permanent progression. */
 const META_KEY = "meta:local";
+const GALLERY_KEY = "gallery:local";
+
+/**
+ * Lancements que l'automate peut rattraper d'un coup.
+ *
+ * Assez pour remplir un rail large ou pour absorber un onglet resté en veille,
+ * pas assez pour qu'un retour d'absence vide l'étal d'un seul bond.
+ */
+const AUTO_LAUNCH_CATCHUP = 8;
 const AUTOSAVE_INTERVAL_MS = 10_000;
 /** How often Emplette looks at the shop. Often enough to feel automatic. */
 const AUTO_BUY_INTERVAL_MS = 700;
@@ -120,6 +142,31 @@ export class GameController {
   private levelId = "level-1";
   /** Times this image has been cleared. Zero on the first pass. */
   private completions = 0;
+  /**
+   * Temps réellement joué sur cette toile, en millisecondes.
+   *
+   * Accumulé frame par frame plutôt que déduit de deux horloges murales : une
+   * partie mise en pause, un onglet fermé ou une nuit de production hors-ligne
+   * ne doivent pas venir gonfler un record. Ce que le score mesure, c'est ce
+   * que le joueur a construit, pas la patience du navigateur.
+   */
+  private playedMs = 0;
+  /** Which image of the gallery this run is playing. */
+  private imageId: string | null = null;
+  /**
+   * The doctrine this toile is played under.
+   *
+   * Chosen before the run and fixed for its whole length: it is an engagement,
+   * not a setting. One that could be switched mid-run would be a seventh
+   * multiplier rather than a decision — which is the defect it exists to fix.
+   */
+  private doctrineId: DoctrineId = DEFAULT_DOCTRINE;
+  private gallery = new ImageGallery();
+
+  /** The images already played, with their best times. */
+  getGallery(): ImageGallery {
+    return this.gallery;
+  }
   /** Latched so clearing the board announces itself once, not every frame. */
   private clearedAnnounced = false;
   /** Colours already announced, so the banner fires once each. */
@@ -215,6 +262,26 @@ export class GameController {
     return true;
   }
 
+  get doctrine(): DoctrineId {
+    return this.doctrineId;
+  }
+
+  /** True once an import has a board waiting to be started. */
+  get hasPreparedLevel(): boolean {
+    return this.prepared !== null;
+  }
+
+  /**
+   * Commits this toile to a doctrine. Refused once the run has begun: the whole
+   * point is that it cannot be reconsidered halfway.
+   */
+  setDoctrine(id: DoctrineId): boolean {
+    if (this.phase === "playing") return false;
+    this.doctrineId = id;
+    this.applyUpgrades();
+    return true;
+  }
+
   getUpgrades(): UpgradeState {
     return this.upgrades;
   }
@@ -271,9 +338,26 @@ export class GameController {
     return true;
   }
 
+  /**
+   * What the shop and the profile currently grant, recomputed only when one of
+   * them changes.
+   *
+   * It used to be read straight from `upgrades.effects(meta.bonus())` wherever
+   * it was needed — including once per destroyed pixel, to know what that pixel
+   * was worth. That was survivable until the colour book started counting its
+   * completed planes inside `bonus()`: sixteen planes of two hundred and
+   * fifty-six hexes, rebuilt as strings, three thousand times a second. Eleven
+   * million allocations per second is not a slow game, it is a stalled one.
+   */
+  private effects: UpgradeEffects = new UpgradeState().effects();
+
   private applyUpgrades(): void {
     const bonus = this.meta.bonus();
-    const effects = this.upgrades.effects(bonus);
+    // The doctrine bends what the shop bought rather than what the game starts
+    // from: its cost has to grow with the axis it amputates, or a −30 % on the
+    // magazine stops being felt exactly when the magazine gets big.
+    const effects = applyDoctrine(this.upgrades.effects(bonus), doctrineOf(this.doctrineId));
+    this.effects = effects;
 
     // Négoce discounts the shop the player is looking at, so it is set on the
     // state that prices it rather than folded into the balance.
@@ -351,7 +435,30 @@ export class GameController {
       // The automaton belongs to the toile, so a new toile has none: the toggle
       // comes back off with it rather than staying lit over nothing.
       this.autoLaunch = false;
+      this.playedMs = 0;
       this.prepared = PixelWorld.create(palette, colorId);
+
+      // The image joins the gallery at import, not at its first clear: a toile
+      // abandoned halfway is still an image the player has met, and its record
+      // line is what says "you left this one at 60 %".
+      this.imageId = hashImage(palette, this.prepared.colorId);
+      this.gallery.remember(
+        {
+          id: this.imageId,
+          name: file.name,
+          paletteSize: palette.length,
+          playablePixels: this.prepared.playablePixels,
+          swatches: palette.map((entry) => ({ r: entry.r, g: entry.g, b: entry.b })),
+          thumbnail: thumbnailOf(
+            this.prepared.colorId,
+            this.prepared.width,
+            this.prepared.height,
+          ),
+        },
+        Date.now(),
+      );
+      void this.saveGallery();
+
       this.events.onLevelPrepared?.(palette, this.prepared.colorId, this.prepared.width);
     } catch (error) {
       this.setPhase("idle");
@@ -416,6 +523,7 @@ export class GameController {
     this.completions = 0;
     this.upgrades = new UpgradeState({ ...bonus.carriedLevels }, bonus.startingFragments);
     this.autoLaunch = false;
+    this.playedMs = 0;
     this.rebuildFromBaseImage();
     return true;
   }
@@ -431,6 +539,10 @@ export class GameController {
   startNextPass(): boolean {
     if (!this.isCleared) return false;
     this.completions++;
+    // A pass is a run of its own, so its time starts at zero: the record is
+    // "how fast can this image be cleared", not "how long has this tab been
+    // open". A second pass keeps the build and should beat the first.
+    this.playedMs = 0;
     this.rebuildFromBaseImage();
     return true;
   }
@@ -503,7 +615,7 @@ export class GameController {
     // remainder is carried so a ×1.05 is not silently rounded away.
     let carry = 0;
     world.onDestroy(() => {
-      carry += this.upgrades.effects(this.meta.bonus()).fragmentsPerPixel;
+      carry += this.effects.fragmentsPerPixel;
       const whole = Math.floor(carry);
       if (whole > 0) {
         this.upgrades.earn(whole);
@@ -572,15 +684,19 @@ export class GameController {
 
     if (this.phase !== "playing" || !this.combat || !this.world || !this.board) return;
 
-    const shopping = this.upgrades.effects(this.meta.bonus());
+    this.playedMs += deltaMs;
+
+    // Read from the cache, never recomputed here: `effects()` walks the whole
+    // shop and `bonus()` the whole profile, and this runs sixty times a second.
+    const shopping = this.effects;
 
     if (shopping.canAutoBuy && nowMs - this.lastAutoBuyMs > AUTO_BUY_INTERVAL_MS) {
       this.lastAutoBuyMs = nowMs;
-      // The cheapest one, so it spends fragments the way a player watching the
-      // panel would: little and often, never saving up for one big axis it was
-      // not asked to prefer.
-      const cheapest = this.upgrades.cheapestAffordable();
-      if (cheapest) this.buyUpgrade(cheapest);
+      // Little and often on the levels — but it saves for a door, because a
+      // shop that always buys the cheapest thing can never afford an expensive
+      // one. See `UpgradeState.nextAutoPurchase`.
+      const next = this.upgrades.nextAutoPurchase();
+      if (next) this.buyUpgrade(next);
     }
 
     // The automaton fires on its own clock, and that clock is a thing the toile
@@ -590,9 +706,20 @@ export class GameController {
     // quarter of a second. That is the axis the run is built around: the early
     // minutes are played by hand, and the toile automates itself as it pays.
     const autoMs = shopping.autoLaunchMs;
-    const autoDue = autoMs !== null && nowMs - this.lastAutoLaunchMs >= autoMs;
+    // Launches owed since the last one, not a single yes-or-no. A cannon leaves
+    // the rail when its stock is spent — about a second for a base load — so a
+    // rail is kept turning by owing launches and paying them, not by asking
+    // once a frame whether one is due. At the top of Cadence the delay is zero
+    // and every free slot is served on the spot; after a stall the automaton
+    // catches up instead of silently dropping what it owed.
+    const owed =
+      autoMs === null
+        ? 0
+        : autoMs <= 0
+          ? AUTO_LAUNCH_CATCHUP
+          : Math.min(AUTO_LAUNCH_CATCHUP, (nowMs - this.lastAutoLaunchMs) / autoMs);
 
-    if (this.autoLaunch && this.queue && autoDue) {
+    if (this.autoLaunch && this.queue && owed >= 1) {
       this.lastAutoLaunchMs = nowMs;
       // One per interval, not a loop: the rail should visibly fill rather than
       // blink from empty to full, and a slot that frees this frame is served
@@ -608,11 +735,13 @@ export class GameController {
       // minutes of it. It picks a colour something actually exposes, and only
       // falls back to the first offer when nothing does.
       const reachable = this.combat.reachableColors;
-      const offers = this.queue.visible;
-      const next =
-        (reachable ? offers.find((load) => reachable[load.colorId] !== false) : undefined) ??
-        offers[0];
-      if (next && this.combat.hasFreeSlot) this.launch(next.id);
+      for (let i = 0; i < owed && this.combat.hasFreeSlot; i++) {
+        const offers = this.queue.visible;
+        const next =
+          (reachable ? offers.find((load) => reachable[load.colorId] !== false) : undefined) ??
+          offers[0];
+        if (!next || !this.launch(next.id)) break;
+      }
     }
 
     const simStart = performance.now();
@@ -677,7 +806,12 @@ export class GameController {
       // unarguably finished — which is exactly what the library collects.
       const entry = this.world.palette[colour];
       const slot = entry
-        ? this.meta.library.record({ r: entry.r, g: entry.g, b: entry.b, count: entry.count })
+        ? this.meta.library.record(
+            { r: entry.r, g: entry.g, b: entry.b, count: entry.count },
+            // Where it was met. The gallery knows the image by name; without
+            // it the book has entries but no memories.
+            this.imageId === null ? undefined : (this.gallery.get(this.imageId)?.name ?? undefined),
+          )
         : null;
       if (slot) void this.saveMeta();
 
@@ -714,10 +848,17 @@ export class GameController {
         },
         this.upgrades.serialize().levels,
       );
+      // The time is what the player beat, so it is banked with the reward.
+      const outcome =
+        this.imageId === null
+          ? null
+          : this.gallery.noteClear(this.imageId, this.playedMs, reward.total, Date.now());
+
       this.saveDirty = true;
       void this.save();
       void this.saveMeta();
-      this.events.onLevelCleared?.(this.pass, reward);
+      void this.saveGallery();
+      this.events.onLevelCleared?.(this.pass, reward, outcome);
     }
 
     this.profiler.recordFrame(deltaMs, simMs);
@@ -810,6 +951,28 @@ export class GameController {
       if (snapshot) this.meta = MetaProgression.restore(snapshot);
     } catch {
       // A profile that will not load is not a reason to refuse to play.
+    }
+
+    try {
+      const gallery = await this.saves.getSetting<GallerySnapshot>(GALLERY_KEY);
+      if (gallery) this.gallery = ImageGallery.restore(gallery);
+    } catch {
+      // Same: a gallery that will not load costs a record, not a run.
+    }
+  }
+
+  /**
+   * The gallery rides in the settings store beside the profile, not in a level
+   * save: it outlives every image it holds, and a level save is deleted when
+   * the player changes picture.
+   */
+  private async saveGallery(): Promise<void> {
+    try {
+      await this.saves.setSetting(GALLERY_KEY, this.gallery.serialize());
+    } catch (error) {
+      this.events.onError?.(
+        `Galerie non sauvegardée : ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

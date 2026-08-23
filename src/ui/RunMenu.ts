@@ -1,5 +1,6 @@
 import type { GameController } from "../app/GameController";
 import type { ClearReward } from "../progression/MetaProgression";
+import type { ClearOutcome } from "../progression/ImageGallery";
 import { formatCount } from "./format";
 
 /**
@@ -42,6 +43,7 @@ export class RunMenu {
   private armed: HTMLButtonElement | null = null;
   /** What the clear just paid, itemised, shown once in the completion panel. */
   private reward: ClearReward | null = null;
+  private time: ClearOutcome | null = null;
 
   constructor(
     private readonly game: GameController,
@@ -119,8 +121,9 @@ export class RunMenu {
    * Opens on the board being cleared. The panel leads with the next pass, and
    * the run has nothing left to do behind it anyway.
    */
-  announceCleared(reward: ClearReward | null = null): void {
+  announceCleared(reward: ClearReward | null = null, time: ClearOutcome | null = null): void {
     this.reward = reward;
+    this.time = time;
     this.render(true);
     this.panel.hidden = false;
   }
@@ -157,6 +160,16 @@ export class RunMenu {
    * already been round this image — and each one is worth reading, because each
    * one is a reason to go and find a different picture to feed the machine.
    */
+  /** Le chrono d'un passage, écrit comme un joueur le lit. */
+  private static clock(ms: number): string {
+    const total = Math.round(ms / 1000);
+    const minutes = Math.floor(total / 60);
+    const seconds = total % 60;
+    return minutes > 0
+      ? `${minutes} min ${String(seconds).padStart(2, "0")} s`
+      : `${seconds} s`;
+  }
+
   private renderReward(): void {
     const reward = this.reward;
     this.rewardBox.hidden = reward === null;
@@ -171,6 +184,18 @@ export class RunMenu {
       // every toile already finished pays on this one.
       ["Métier", `×${reward.craftFactor.toFixed(2)}`],
     ];
+
+    // The time comes first in the reading order because it is the one number
+    // the player can do something about on the very next pass.
+    if (this.time) {
+      const { ms, isRecord, previousBestMs } = this.time;
+      lines.unshift([
+        isRecord ? "Temps · record" : "Temps",
+        previousBestMs === null
+          ? RunMenu.clock(ms)
+          : `${RunMenu.clock(ms)} · ${isRecord ? "battu" : "record"} ${RunMenu.clock(previousBestMs)}`,
+      ]);
+    }
     if (reward.multiplier !== 1) lines.push(["Prospecteur", `×${reward.multiplier.toFixed(2)}`]);
 
     this.rewardBox.replaceChildren();

@@ -4,6 +4,8 @@ import { detectFeatures } from "./app/FeatureDetection";
 import { GameScreen } from "./ui/GameScreen";
 import { ImportScreen } from "./ui/ImportScreen";
 import { RunMenu } from "./ui/RunMenu";
+import { GalleryPanel } from "./ui/GalleryPanel";
+import { DoctrinePanel } from "./ui/DoctrinePanel";
 import { OfflineScreen } from "./ui/OfflineScreen";
 import { ViewportControls } from "./ui/ViewportControls";
 
@@ -36,6 +38,8 @@ async function boot(): Promise<void> {
   let importScreen: ImportScreen;
   let offlineScreen: OfflineScreen;
   let runMenu: RunMenu;
+  let gallery: GalleryPanel | undefined;
+  let doctrine: DoctrinePanel | undefined;
   let syncBoard: () => void;
 
   const game: GameController = new GameController(app, {
@@ -52,11 +56,17 @@ async function boot(): Promise<void> {
         importScreen.setResumable(game.canResume);
         importScreen.setShards(game.getMeta().balance);
         importScreen.show();
+        gallery?.render();
       }
     },
     onProgress: ({ stage, progress }) => importScreen.updateStage(stage, progress),
     onLevelPrepared: (palette, colorId, width) => {
       importScreen.showResult(palette, colorId, width);
+      // An image joins the gallery at import, so the grid gains its card now —
+      // and the doctrine can be chosen, since there is finally a toile to
+      // commit it to.
+      gallery?.render();
+      doctrine?.render();
     },
     onLevelReady: (world) => {
       gameScreen.setLevelLabel(`Image · ${world.paletteSize} couleurs`);
@@ -65,7 +75,11 @@ async function boot(): Promise<void> {
     onMilestone: (milestone) => gameScreen.announceMilestone(milestone),
     onColorCleared: (colorId, count, newToLibrary) =>
       gameScreen.announceColorCleared(colorId, count, newToLibrary),
-    onLevelCleared: (_pass, reward) => runMenu.announceCleared(reward),
+    onLevelCleared: (_pass, reward, time) => {
+      runMenu.announceCleared(reward, time);
+      // The record it just set belongs on the home screen the moment it exists.
+      gallery?.render();
+    },
     onFinale: () =>
       gameScreen.notify("99,9 % — la toile se termine toute seule, munitions illimitées."),
     onOfflineReport: (report) => {
@@ -83,6 +97,8 @@ async function boot(): Promise<void> {
   offlineScreen = new OfflineScreen(() => {});
 
   runMenu = new RunMenu(game, () => gameScreen.upgrades.open("permanent"));
+  gallery = new GalleryPanel(game);
+  doctrine = new DoctrinePanel(game);
 
   importScreen.onStart(() => game.startPreparedLevel());
   importScreen.onResume(() => game.resume());
@@ -133,6 +149,9 @@ async function boot(): Promise<void> {
   await game.loadMeta();
 
   const restored = await game.restoreLatest().catch(() => false);
+  // The gallery is loaded with the profile, so the home screen can show it on
+  // the very first frame rather than after an import.
+  gallery.render();
   if (!restored) importScreen.show();
 
   Object.assign(window, { __game: game, __controls: controls, __menu: runMenu });

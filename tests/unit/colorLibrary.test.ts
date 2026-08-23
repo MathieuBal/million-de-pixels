@@ -190,3 +190,39 @@ describe("ColorLibrary", () => {
     });
   });
 });
+
+describe("la fiche d'une teinte", () => {
+  it("retient l'image où elle a été trouvée", () => {
+    const library = new ColorLibrary();
+    library.record({ r: 226, g: 85, b: 63, count: 1000 }, "affiche.png", 1_700_000_000_000);
+
+    const specimen = library.specimen("#DD5544")!;
+    expect(specimen.fromImage).toBe("affiche.png");
+    expect(specimen.foundAtEpochMs).toBe(1_700_000_000_000);
+  });
+
+  it("ne réécrit jamais la première rencontre", () => {
+    // Une toile plus tard qui contient la même teinte ajoute des pixels, pas un
+    // nouveau souvenir : le carnet dit *où on l'a vue la première fois*.
+    const library = new ColorLibrary();
+    library.record({ r: 226, g: 85, b: 63, count: 1000 }, "affiche.png", 1000);
+    library.record({ r: 226, g: 85, b: 63, count: 500 }, "montagne.jpg", 9999);
+
+    const specimen = library.specimen("#DD5544")!;
+    expect(specimen.fromImage).toBe("affiche.png");
+    expect(specimen.foundAtEpochMs).toBe(1000);
+    expect(specimen.pixels).toBe(1500);
+    expect(specimen.clears).toBe(2);
+  });
+
+  it("reste valide sans provenance", () => {
+    // Les teintes cataloguées avant que la galerie existe perdent la légende,
+    // pas l'entrée.
+    const library = new ColorLibrary();
+    library.record({ r: 0, g: 0, b: 0, count: 10 });
+    const specimen = library.specimen("#000000")!;
+    expect(specimen.fromImage).toBeUndefined();
+    expect(specimen.pixels).toBe(10);
+    expect(library.discovered).toBe(1);
+  });
+});

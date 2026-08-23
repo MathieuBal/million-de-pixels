@@ -202,6 +202,69 @@ html, body {
 .error { margin: 12px 0 0; font-size: 13px; color: #ff6b6b; }
 .error[hidden] { display: none; }
 
+/*
+ * La galerie : les toiles déjà jouées, sur l'accueil.
+ *
+ * Deux colonnes, parce qu'une vignette de trente-deux cases doit rester
+ * lisible sur un téléphone — en trois, la silhouette devient une tache.
+ */
+.gallery { margin-top: 24px; }
+.gallery[hidden] { display: none; }
+.gallery-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+.gallery-head .value { font-size: 11px; color: var(--muted-2); }
+.gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.gallery-card {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+}
+.gallery-thumb {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 6px;
+  /* La vignette fait trente-deux cases de côté : un lissage la transformerait
+     en dégradé, c'est-à-dire en couleurs que l'image ne contient pas. */
+  image-rendering: pixelated;
+  background: var(--well);
+}
+.gallery-card figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.gallery-name {
+  font-size: 12px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gallery-time { font-family: var(--mono); font-size: 12px; color: var(--accent); }
+.gallery-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .setting-rows { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
 .setting-rows[hidden] { display: none; }
 .setting-row {
@@ -277,6 +340,36 @@ html, body {
 }
 .adv-row input[type="range"] { width: 96px; }
 .adv-row input:disabled { opacity: 0.4; }
+
+/*
+ * Le choix de doctrine. Une carte par doctrine, en colonne : les trois lignes
+ * — ce qu'elle donne, ce qu'elle retire, à quoi elle va — ne tiennent pas côte
+ * à côte sur un téléphone, et c'est le coût qu'on tronquerait en premier.
+ */
+.doctrine { margin-top: 22px; }
+.doctrine[hidden] { display: none; }
+.doctrine-choices { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.doctrine-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 16px;
+  text-align: left;
+  font: inherit;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.doctrine-card[data-active="true"] { border-color: var(--accent); background: var(--raise); }
+.doctrine-head { display: flex; justify-content: space-between; align-items: baseline; }
+.doctrine-head b { font-size: 14px; color: var(--text); }
+.doctrine-head i { font-family: var(--mono); font-style: normal; font-size: 12px; color: var(--muted-3); }
+/* Le gain en clair, le coût en rouge : la couleur dit lequel est lequel avant
+   que le texte ne soit lu. */
+.doctrine-gain { font-family: var(--mono); font-size: 11px; color: var(--reach); }
+.doctrine-cost { font-family: var(--mono); font-size: 11px; color: var(--danger); }
+.doctrine-suits { font-size: 11px; line-height: 1.4; color: var(--muted-2); }
 
 .import-footer { margin-top: auto; padding-top: 22px; display: flex; flex-direction: column; gap: 12px; }
 
@@ -949,7 +1042,22 @@ html, body {
 /* A missing hex is a hole, not a grey swatch: it must not look catalogued. */
 .hex-cell[data-found="false"] { background: repeating-linear-gradient(
   45deg, #0e0e13, #0e0e13 2px, #14141a 2px, #14141a 4px); }
-.hex-cell[data-found="true"] { border-color: rgba(255, 255, 255, 0.18); }
+.hex-cell[data-found="true"] {
+  border-color: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+.hex-cell[data-found="true"]:hover { border-color: var(--accent); }
+
+/* La fiche d'une teinte : la pastille en grand, et ce qu'on sait d'elle. */
+.specimen { display: flex; gap: 14px; align-items: flex-start; padding: 4px 0 10px; }
+.specimen-swatch {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+.specimen-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 
 .upgrade-batch { display: flex; gap: 6px; }
 /* `display: flex` beats the user agent's `[hidden] { display: none }`, so a

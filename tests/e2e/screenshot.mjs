@@ -108,11 +108,22 @@ try {
     await page.waitForSelector("#upgrade-panel:not([hidden])");
     await page.locator('#upgrade-tabs button[data-tab="library"]').click();
     await page.waitForTimeout(400);
+    if (process.env.SHOT_SPECIMEN) {
+      await page.locator('.hex-cell[data-found="true"]').first().click();
+      await page.waitForTimeout(300);
+    }
     await page.screenshot({ path: OUT });
     await browser.close();
     process.exit(0);
   }
   if (process.env.SHOT_CLEAR) {
+    // Give the run a history so the clear panel has a record to beat.
+    await page.evaluate(() => {
+      const game = window.__game;
+      const gallery = game.getGallery();
+      const record = gallery.all()[0];
+      if (record) gallery.noteClear(record.id, 214_000, 25, Date.now());
+    });
     await page.evaluate(() => {
       const world = window.__game.getWorld();
       const rng = { nextInt: () => 0, nextFloat: () => 0, nextUint32: () => 1 };
@@ -154,6 +165,61 @@ try {
     });
     await page.waitForTimeout(200);
     await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
+  if (process.env.SHOT_GALLERY) {
+    // Une galerie plausible : quelques images, des temps, une jamais finie.
+    await page.evaluate(() => {
+      const g = window.__game.getGallery();
+      const seed = g.all()[0];
+      if (seed) {
+        g.noteClear(seed.id, 726_000, 25, Date.now() - 400_000);
+        g.noteClear(seed.id, 512_000, 31, Date.now() - 300_000);
+        for (const [i, name] of ["montagne.jpg", "portrait.png", "affiche-2.webp"].entries()) {
+          g.remember({ ...seed, id: `demo-${i}`, name }, Date.now() - i * 10_000);
+          if (i < 2) g.noteClear(`demo-${i}`, 300_000 + i * 240_000, 20, Date.now() - i * 9000);
+        }
+      }
+    });
+    // Retour à l'accueil par le chemin du joueur : le menu, puis « changer »,
+    // qui demande deux clics — le premier ne fait qu'armer le bouton.
+    await page.locator("#menu").click();
+    await page.waitForSelector("#run-menu:not([hidden])");
+    await page.locator("#run-change").click();
+    await page.locator("#run-change").click();
+    await page.waitForSelector("#screen-import:not([hidden])", { timeout: 15000 });
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
+  if (process.env.SHOT_AUTO) {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+
+    const report = [];
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.getUpgrades().earn(50_000);
+      g.buyUpgrade("automate");
+      g.setAutoLaunch(true);
+    });
+    for (let i = 0; i < 6; i++) {
+      await page.waitForTimeout(5000);
+      report.push(await page.evaluate(() => {
+        const g = window.__game;
+        return {
+          canons: document.querySelectorAll(".rail-token").length,
+          vivants: g.getWorld().aliveTotal(),
+          auto: g.isAutoLaunching,
+          delai: g.getUpgrades().effects(g.getMeta().bonus()).autoLaunchMs,
+        };
+      }));
+    }
+    console.log("AUTO " + JSON.stringify(report));
+    console.log("ERREURS " + JSON.stringify(errors.slice(0, 5)));
     await browser.close();
     process.exit(0);
   }

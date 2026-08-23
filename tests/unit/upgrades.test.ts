@@ -9,6 +9,7 @@ import { CANNON_MOVE_SPEED } from "../../src/cannon/ActiveCannon";
 import { DEFAULT_LOAD_AMMO } from "../../src/cannon/CannonLoad";
 import { VISIBLE_LOADS } from "../../src/cannon/CannonQueue";
 import { MAX_ACTIVE_CANNONS } from "../../src/combat/CombatSimulator";
+import { PERIMETER } from "../../src/combat/Cannon";
 
 describe("UpgradeState", () => {
   it("starts at the base game", () => {
@@ -222,6 +223,87 @@ describe("la boutique de toile : automatisme et capacités", () => {
       if (!id) break;
       expect(shop.isAvailable(id)).toBe(true);
       shop.buy(id);
+    }
+  });
+});
+
+describe("l'achat automatique et les portes", () => {
+  it("prend une porte payable avant n'importe quel niveau", () => {
+    const shop = new UpgradeState({}, 5000);
+    // Perce coûte 4 000, un niveau de Vitesse 120 : le moins cher n'est pas
+    // ce qu'il faut prendre.
+    expect(shop.cheapestAffordable()).not.toBe("perce");
+    expect(shop.nextAutoPurchase()).toBe("automate");
+  });
+
+  it("épargne à mi-chemin d'une porte au lieu de vider le solde", () => {
+    const shop = new UpgradeState({}, 2000);
+    // Automate coûte 2 500 : à 2 000 on en est à plus de la moitié, donc on
+    // attend plutôt que de dépenser en niveaux.
+    expect(shop.cheapestAffordable()).not.toBeNull();
+    expect(shop.nextAutoPurchase()).toBeNull();
+  });
+
+  it("dépense normalement tant qu'aucune porte n'est en vue", () => {
+    const shop = new UpgradeState({}, 300);
+    expect(shop.nextAutoPurchase()).toBe(shop.cheapestAffordable());
+    expect(shop.nextAutoPurchase()).not.toBeNull();
+  });
+
+  it("dépense sans retenue une fois toutes les portes ouvertes", () => {
+    const shop = new UpgradeState({}, 100_000_000);
+    for (const door of ["automate", "emplette", "perce", "explosion", "foudre", "feu"] as const) {
+      shop.buy(door);
+    }
+    expect(shop.nextAutoPurchase()).toBe(shop.cheapestAffordable());
+  });
+
+  it("finit par ouvrir les quatre portes au lieu de deux", () => {
+    // Le défaut mesuré : en achetant toujours le moins cher, le solde ne monte
+    // jamais et Foudre comme Feu n'étaient jamais achetés d'une toile entière.
+    const shop = new UpgradeState({}, 0);
+    for (let i = 0; i < 4000; i++) {
+      shop.earn(4000);
+      const next = shop.nextAutoPurchase();
+      if (next) shop.buy(next);
+    }
+    for (const door of ["automate", "perce", "explosion", "foudre", "feu"] as const) {
+      expect(shop.levelOf(door)).toBe(1);
+    }
+  });
+});
+
+describe("l'automate doit pouvoir tenir le rail qu'on lui donne", () => {
+  it("relance avant qu'un canon n'ait fini de mourir", () => {
+    // L'invariant, et la borne est la vie d'un canon — pas le tour du plateau.
+    // Un canon quitte le rail quand son stock est dépensé : quarante billes à
+    // une voie sur huit de sa couleur, c'est environ une seconde et quart, très
+    // loin des seize secondes d'un tour. Borner le délai sur le tour donnait
+    // 1,5 s, soit *plus long qu'un canon ne vit* : un canon apparaît, tire une
+    // seconde, disparaît, et le rail reste vide jusqu'au suivant. Avance,
+    // arrêt, reprise.
+    const lifeMs = (DEFAULT_LOAD_AMMO * 8 * 1000) / CANNON_MOVE_SPEED;
+    expect(AUTO_LAUNCH_BASE_MS).toBeLessThan(lifeMs);
+    // Et le tour reste une borne supérieure évidente, très au-dessus.
+    expect(AUTO_LAUNCH_BASE_MS).toBeLessThan(
+      ((PERIMETER / CANNON_MOVE_SPEED) * 1000) / MAX_ACTIVE_CANNONS,
+    );
+  });
+
+  it("finit sans aucun délai, et pas avant la fin", () => {
+    const definition = UPGRADES.find((u) => u.id === "cadence")!;
+    // « Au maximum il n'y a plus de délai » est ce que l'axe promet, donc ce
+    // qu'il fait — et le dernier niveau est le premier à zéro, sinon l'échelle
+    // passe sa fin à ne rien vendre.
+    expect(definition.valueAt(definition.maxLevel)).toBe(AUTO_LAUNCH_FLOOR_MS);
+    expect(AUTO_LAUNCH_FLOOR_MS).toBe(0);
+    expect(definition.valueAt(definition.maxLevel - 1)).toBeGreaterThan(0);
+  });
+
+  it("ne remonte jamais en descendant", () => {
+    const definition = UPGRADES.find((u) => u.id === "cadence")!;
+    for (let level = 1; level <= definition.maxLevel; level++) {
+      expect(definition.valueAt(level)).toBeLessThanOrEqual(definition.valueAt(level - 1));
     }
   });
 });

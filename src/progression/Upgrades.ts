@@ -74,18 +74,32 @@ export interface UpgradeDefinition {
 /**
  * How long the automaton waits between two launches, before any upgrade.
  *
- * Eight seconds: enough that tapping is still worth it, little enough that
- * leaving the phone on the table finally does something. The whole point of
- * moving the automaton into the toile's own shop is that a run should idle from
- * its first minutes rather than after seven hours of profile — measured, before
- * this: the automaton was a permanent node bought on the sixth toile, and the
- * toile after it fell from fifty-eight minutes to seven. The entire difficulty
- * of the game was one purchase.
+ * Four hundred milliseconds, and the number is bounded by how long a cannon
+ * lives, not by how long it takes to go round.
+ *
+ * That distinction is the whole bug. A cannon leaves the rail when its stock is
+ * spent, and a base load of forty rounds is spent in about a second and a
+ * quarter — it never gets near the sixteen seconds a lap takes. Bounding the
+ * delay by the lap gave 1500 ms, which is *longer than a cannon lives*: one
+ * cannon appeared, fired for a second, vanished, and the rail sat empty until
+ * the next one. Advance, stop, start again. The rail is meant to turn.
+ *
+ * Below a cannon's life the rail never empties, and every level of Cadence adds
+ * one that overlaps — until the top of the axis, where the delay is gone
+ * altogether and a freed slot is served on the very next frame.
  */
-export const AUTO_LAUNCH_BASE_MS = 8000;
+export const AUTO_LAUNCH_BASE_MS = 400;
 
-/** Floor on that delay: below this, a launch a frame is not a delay any more. */
-export const AUTO_LAUNCH_FLOOR_MS = 250;
+/**
+ * The delay at the top of the axis: none.
+ *
+ * Not a floor to stop at but the destination — "at maximum there is no delay
+ * any more" is what the axis promises, so it is what it does.
+ */
+export const AUTO_LAUNCH_FLOOR_MS = 0;
+
+/** Levels of Cadence, from the base delay down to none. */
+export const CADENCE_LEVELS = 40;
 
 /**
  * The four axes a player can push, in two families.
@@ -235,13 +249,24 @@ export const UPGRADES: UpgradeDefinition[] = [
     // hit its floor at level twenty-four with two thirds of the toile left to
     // play. A ladder that ends is not a ladder. Five percent a level spreads the
     // same span over sixty-eight, and the price carries the weight instead.
-    maxLevel: 80,
+    maxLevel: CADENCE_LEVELS,
     basePrice: 400,
-    priceGrowth: 1.09,
+    priceGrowth: 1.18,
     requires: ["automate"],
+    // A curve that lands exactly on zero rather than a decay that only
+    // approaches it: an axis whose last level still leaves a delay has not kept
+    // what it promised, and one that reaches its floor at level twenty-four of
+    // eighty spends the rest of the toile selling nothing. Squared, so the
+    // early levels — the ones bought while the rail is still stuttering — are
+    // the ones that give the most.
     valueAt: (level) =>
-      Math.max(AUTO_LAUNCH_FLOOR_MS, Math.round(AUTO_LAUNCH_BASE_MS * 0.95 ** level)),
-    format: (value) => `${(value / 1000).toFixed(2)} s`,
+      level >= CADENCE_LEVELS
+        ? AUTO_LAUNCH_FLOOR_MS
+        : // Un millième de seconde au minimum tant qu'on n'est pas au bout : le
+          // dernier niveau doit être le premier à zéro, sinon l'axe annonce
+          // « sans délai » plusieurs niveaux avant de l'avoir vendu.
+          Math.max(1, Math.round(AUTO_LAUNCH_BASE_MS * (1 - level / CADENCE_LEVELS) ** 2)),
+    format: (value) => (value === 0 ? "sans délai" : `${(value / 1000).toFixed(2)} s`),
   },
   {
     id: "emplette",
@@ -262,6 +287,18 @@ export const UPGRADES: UpgradeDefinition[] = [
   // Four doors, each opening onto its own two numbers. They are bought with
   // fragments inside a toile for the same reason the automaton is: a capability
   // that a profile owns for good is a capability that stops being a decision.
+  //
+  // The prices climb faster than the capabilities do — 4 k, 20 k, 60 k, 150 k —
+  // because a ladder whose rungs are a factor of two apart is not a ladder once
+  // the automaton is running and the income stops growing and starts exploding.
+  // At the original spread all four doors opened inside seven minutes of a toile
+  // that lasted thirty-one, the last of them bought for six minutes of use.
+  //
+  // A wider spread was tried and measured worse, which is the more useful half
+  // of this note: at 25 k / 120 k / 500 k the top two doors were simply never
+  // reached, on a toile that earned close to seven million fragments. Price
+  // alone cannot spread a ladder against an exponential income — past a point it
+  // stops spacing the rungs and starts deleting them.
   {
     id: "perce",
     family: "capacites",
@@ -269,7 +306,7 @@ export const UPGRADES: UpgradeDefinition[] = [
     glyph: "→",
     description: "Un tir peut traverser ce qui bouche la voie",
     maxLevel: 1,
-    basePrice: 6000,
+    basePrice: 4000,
     priceGrowth: 1,
     valueAt: (level) => level,
     format: (value) => (value > 0 ? "débloquée" : "verrouillée"),
@@ -307,7 +344,7 @@ export const UPGRADES: UpgradeDefinition[] = [
     glyph: "✳",
     description: "Une case détruite peut emporter ses voisines",
     maxLevel: 1,
-    basePrice: 15_000,
+    basePrice: 20_000,
     priceGrowth: 1,
     valueAt: (level) => level,
     format: (value) => (value > 0 ? "débloquée" : "verrouillée"),
@@ -345,7 +382,7 @@ export const UPGRADES: UpgradeDefinition[] = [
     glyph: "⚡",
     description: "Un arc saute vers une voisine de la même couleur",
     maxLevel: 1,
-    basePrice: 30_000,
+    basePrice: 60_000,
     priceGrowth: 1,
     valueAt: (level) => level,
     format: (value) => (value > 0 ? "débloquée" : "verrouillée"),
@@ -383,7 +420,7 @@ export const UPGRADES: UpgradeDefinition[] = [
     glyph: "≋",
     description: "Un incendie prend là où la case est morte",
     maxLevel: 1,
-    basePrice: 60_000,
+    basePrice: 80_000,
     priceGrowth: 1,
     valueAt: (level) => level,
     format: (value) => (value > 0 ? "débloquée" : "verrouillée"),
@@ -512,7 +549,43 @@ export class UpgradeState {
     return Math.max(1, Math.round(full * this.priceMultiplier));
   }
 
-  /** The cheapest axis still worth buying, or null. Emplette runs on this. */
+  /**
+   * What the automatic buyer should take next, or null while it should save.
+   *
+   * `cheapestAffordable` on its own is a trap in a shop that has doors. Emplette
+   * buys the cheapest thing it can, always, so the balance never climbs — and a
+   * capability priced at a serious fraction of a toile simply never becomes
+   * affordable. Measured with the automatic buyer on: Foudre and Feu were never
+   * bought once, on a toile that earned six and a half million fragments.
+   *
+   * So it saves toward the door. Once the balance is halfway to the cheapest one
+   * still shut, it stops buying levels and lets the fragments pile up; the
+   * moment the door is affordable, the door is what it takes.
+   *
+   * A rule of "always keep half the balance" was measured against this one and
+   * is worse: it saves by construction but not on purpose, so the balance only
+   * creeps, and both Foudre and Feu went from bought to never bought. Saving
+   * has to be aimed at something to work.
+   */
+  nextAutoPurchase(): UpgradeId | null {
+    // An affordable door first: it is the purchase that changes what a cannon
+    // can do, and everything else can wait a few seconds for it.
+    let door: UpgradeId | null = null;
+    let doorPrice = Number.POSITIVE_INFINITY;
+    for (const definition of UPGRADES) {
+      if (definition.maxLevel !== 1 || this.isMaxed(definition.id)) continue;
+      const price = this.priceOf(definition.id);
+      if (price === null || price >= doorPrice) continue;
+      door = definition.id;
+      doorPrice = price;
+    }
+    if (door !== null && doorPrice <= this.balance) return door;
+    if (door !== null && this.balance >= doorPrice / 2) return null;
+
+    return this.cheapestAffordable();
+  }
+
+  /** The cheapest axis still worth buying, or null. */
   cheapestAffordable(): UpgradeId | null {
     let best: UpgradeId | null = null;
     let bestPrice = Number.POSITIVE_INFINITY;

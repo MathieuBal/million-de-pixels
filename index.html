@@ -50,6 +50,19 @@
 
         <p id="drop-error" class="error" hidden></p>
 
+        <!--
+          Les images déjà jouées. La grille n'existe pas avant la première :
+          un écran d'accueil qui montre une case vide promet quelque chose au
+          lieu de dire quoi faire.
+        -->
+        <section id="gallery" class="gallery" hidden>
+          <div class="gallery-head">
+            <span class="eyebrow">Vos toiles</span>
+            <span id="gallery-count" class="value">—</span>
+          </div>
+          <div id="gallery-grid" class="gallery-grid"></div>
+        </section>
+
         <div id="import-rows" class="setting-rows">
           <div class="setting-row">
             <span class="label">Cadrage</span><span class="value">contain · silhouette</span>
@@ -61,6 +74,17 @@
             <span class="label">Marges jouables</span><span class="value">désactivé</span>
           </div>
         </div>
+
+        <!--
+          La doctrine se choisit avant la toile et vaut pour toute sa durée :
+          c'est un engagement, et c'est ce qui en fait une décision plutôt qu'un
+          réglage. Elle est ici, sur l'écran d'import, parce que c'est le seul
+          moment où le joueur regarde l'image sans encore la jouer.
+        -->
+        <section id="doctrine" class="doctrine" hidden>
+          <div class="eyebrow">Doctrine · vaut pour toute la toile</div>
+          <div id="doctrine-choices" class="doctrine-choices"></div>
+        </section>
 
         <ol id="stages" class="stages" hidden></ol>
 
