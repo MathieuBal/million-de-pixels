@@ -230,12 +230,17 @@ export const UPGRADES: UpgradeDefinition[] = [
     label: "Cadence",
     glyph: "≫",
     description: "Délai entre deux envois automatiques",
-    maxLevel: 24,
+    // Eight seconds down to a quarter of one is a factor of thirty-two, and at
+    // fifteen percent a level that is spent in twenty-one — measured, the axis
+    // hit its floor at level twenty-four with two thirds of the toile left to
+    // play. A ladder that ends is not a ladder. Five percent a level spreads the
+    // same span over sixty-eight, and the price carries the weight instead.
+    maxLevel: 80,
     basePrice: 400,
-    priceGrowth: 1.18,
+    priceGrowth: 1.09,
     requires: ["automate"],
     valueAt: (level) =>
-      Math.max(AUTO_LAUNCH_FLOOR_MS, Math.round(AUTO_LAUNCH_BASE_MS * 0.85 ** level)),
+      Math.max(AUTO_LAUNCH_FLOOR_MS, Math.round(AUTO_LAUNCH_BASE_MS * 0.95 ** level)),
     format: (value) => `${(value / 1000).toFixed(2)} s`,
   },
   {
