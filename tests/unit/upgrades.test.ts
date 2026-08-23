@@ -225,3 +225,49 @@ describe("la boutique de toile : automatisme et capacités", () => {
     }
   });
 });
+
+describe("l'achat automatique et les portes", () => {
+  it("prend une porte payable avant n'importe quel niveau", () => {
+    const shop = new UpgradeState({}, 5000);
+    // Perce coûte 4 000, un niveau de Vitesse 120 : le moins cher n'est pas
+    // ce qu'il faut prendre.
+    expect(shop.cheapestAffordable()).not.toBe("perce");
+    expect(shop.nextAutoPurchase()).toBe("automate");
+  });
+
+  it("épargne à mi-chemin d'une porte au lieu de vider le solde", () => {
+    const shop = new UpgradeState({}, 2000);
+    // Automate coûte 2 500 : à 2 000 on en est à plus de la moitié, donc on
+    // attend plutôt que de dépenser en niveaux.
+    expect(shop.cheapestAffordable()).not.toBeNull();
+    expect(shop.nextAutoPurchase()).toBeNull();
+  });
+
+  it("dépense normalement tant qu'aucune porte n'est en vue", () => {
+    const shop = new UpgradeState({}, 300);
+    expect(shop.nextAutoPurchase()).toBe(shop.cheapestAffordable());
+    expect(shop.nextAutoPurchase()).not.toBeNull();
+  });
+
+  it("dépense sans retenue une fois toutes les portes ouvertes", () => {
+    const shop = new UpgradeState({}, 100_000_000);
+    for (const door of ["automate", "emplette", "perce", "explosion", "foudre", "feu"] as const) {
+      shop.buy(door);
+    }
+    expect(shop.nextAutoPurchase()).toBe(shop.cheapestAffordable());
+  });
+
+  it("finit par ouvrir les quatre portes au lieu de deux", () => {
+    // Le défaut mesuré : en achetant toujours le moins cher, le solde ne monte
+    // jamais et Foudre comme Feu n'étaient jamais achetés d'une toile entière.
+    const shop = new UpgradeState({}, 0);
+    for (let i = 0; i < 4000; i++) {
+      shop.earn(4000);
+      const next = shop.nextAutoPurchase();
+      if (next) shop.buy(next);
+    }
+    for (const door of ["automate", "perce", "explosion", "foudre", "feu"] as const) {
+      expect(shop.levelOf(door)).toBe(1);
+    }
+  });
+});

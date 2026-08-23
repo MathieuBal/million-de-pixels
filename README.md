@@ -490,15 +490,59 @@ que « roguelite » veut dire ici.
 **L'Automate et son délai.** Débloqué, il envoie une case toutes les **8 s** —
 assez pour qu'un pouce fasse encore mieux, assez peu pour qu'un téléphone posé
 sur la table serve enfin à quelque chose. Chaque niveau de **Cadence** en retire
-15 %, jusqu'à un plancher de 0,25 s : en dessous, « de temps en temps » est
-devenu « à chaque frame » et ce n'est plus un délai.
+5 %, jusqu'à un plancher de 0,25 s : en dessous, « de temps en temps » est devenu
+« à chaque frame » et ce n'est plus un délai.
 
-**Les quatre capacités sont des portes.** Perce 6 000 ◈, Explosion 15 000,
-Foudre 30 000, Feu 60 000 — une échelle qui traverse une toile. Derrière chacune,
+Ces 5 % sont une correction mesurée. À 15 % l'axe atteignait son plancher au
+niveau 24, avec les deux tiers de la toile encore à jouer — 8 s vers 0,25 s font
+un facteur trente-deux, et à 15 % par niveau c'est dépensé en vingt-et-un. Une
+échelle qui se termine n'est pas une échelle, et c'était précisément ce qu'on
+demandait à cet axe. À 5 % le même parcours s'étale sur soixante-huit niveaux et
+c'est le prix qui porte le poids : **1,55 M de fragments jusqu'au plancher, soit
+23 % de ce qu'une toile rapporte**. Relevé après correction, même graine, même
+tempo : niveau 61 sur 80, délai final 0,35 s, l'axe encore vivant à la fin.
+
+**Les quatre capacités sont des portes.** Perce 4 000 ◈, Explosion 20 000,
+Foudre 60 000, Feu 80 000 — une échelle qui traverse une toile. Derrière chacune,
 deux réglages : une chance de déclenchement sans plafond utile, et une portée
 (cases traversées, rayon, rebonds, propagation). Un réglage acheté derrière une
 porte fermée reste **inerte** plutôt que de tirer à zéro pour cent, ce qui serait
 la même chose dite moins clairement.
+
+**Comment ces quatre nombres ont été trouvés, et ce qui a échoué avant.** Sept
+relevés, même image, même tempo (un clic toutes les trois secondes jusqu'à
+l'automate) :
+
+| Réglage | Toile | Automate | Perce | Explos. | Foudre | Feu |
+|---|---:|---:|---:|---:|---:|---:|
+| départ | 21,7 min | 14,0 | 14,7 | 15,3 | 15,9 | 18,2 |
+| Cadence profonde | 31,0 | 14,0 | 17,7 | 21,0 | 23,1 | 24,6 |
+| prix ×5, sans épargne | 30,6 | 14,0 | 17,1 | 22,5 | — | — |
+| prix ×5, épargne visée | 41,5 | 12,0 | 16,6 | 26,9 | 40,0 | — |
+| prix ×5, « garder moitié » | 43,0 | 13,1 | 18,0 | 27,3 | — | — |
+| prix modérés | 45,5 | 12,0 | 16,6 | 25,6 | 31,6 | — |
+| **retenu** | **39,1** | **12,0** | **15,7** | **23,3** | **28,0** | **28,6** |
+
+Deux tentatives ont été renversées par la mesure, et elles valent plus que le
+chiffre final :
+
+- **Écarter les prix d'un facteur cinq** (4 k / 25 k / 120 k / 500 k) devait
+  espacer les portes dans le temps. Contre un revenu exponentiel, le prix seul ne
+  peut pas : passé un seuil il n'espace plus les barreaux, il les supprime — les
+  deux dernières portes n'étaient jamais atteintes sur une toile qui rapporte
+  près de sept millions de fragments.
+- **Remplacer l'épargne visée par « garder la moitié du solde »** paraissait plus
+  élégant : ça épargne par construction, sans rien savoir de la porte suivante.
+  Mais épargner par construction n'est pas épargner *dans un but* — le solde ne
+  fait que ramper, et Foudre comme Feu repassaient de achetés à jamais achetés.
+
+**L'arbitrage qui reste.** La toile est passée de 21,7 à 39,1 minutes au fil de
+ces réglages, et ce n'est pas un accident : rendre les portes atteignables oblige
+à épargner, et épargner affame les axes qui détruisent les pixels. Une toile
+courte avec des capacités décoratives, ou une toile longue où elles se méritent —
+c'est la seconde qui est retenue, et c'est un choix de goût, pas une mesure. Le
+repère : à un clic par seconde, la même toile fait 15 minutes ; les 39 sont un
+pouce lent.
 
 Les nœuds de confort qui restent permanents — Nuancier, Trieuse — ne changent pas
 ce que fait un canon : ils changent ce que le joueur voit et peut filtrer. Les

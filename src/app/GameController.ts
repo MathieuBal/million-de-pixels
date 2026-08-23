@@ -576,11 +576,11 @@ export class GameController {
 
     if (shopping.canAutoBuy && nowMs - this.lastAutoBuyMs > AUTO_BUY_INTERVAL_MS) {
       this.lastAutoBuyMs = nowMs;
-      // The cheapest one, so it spends fragments the way a player watching the
-      // panel would: little and often, never saving up for one big axis it was
-      // not asked to prefer.
-      const cheapest = this.upgrades.cheapestAffordable();
-      if (cheapest) this.buyUpgrade(cheapest);
+      // Little and often on the levels — but it saves for a door, because a
+      // shop that always buys the cheapest thing can never afford an expensive
+      // one. See `UpgradeState.nextAutoPurchase`.
+      const next = this.upgrades.nextAutoPurchase();
+      if (next) this.buyUpgrade(next);
     }
 
     // The automaton fires on its own clock, and that clock is a thing the toile
