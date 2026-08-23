@@ -297,6 +297,15 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
+
+  // Un solde connu : ce bloc vérifie que le lot est chiffré et acheté, pas que
+  // six secondes de jeu laissent de quoi le payer. Sans ça il tenait à un achat
+  // près — il a fini par tomber du mauvais côté sur un changement de prix qui
+  // n'avait rien à voir avec lui. Ce que rapportent les pixels est mesuré plus
+  // haut, et à sa place.
+  await page.evaluate(() => window.__game.getUpgrades().earn(200_000));
+  await page.waitForTimeout(150);
+
   check("la boutique offre ×1, ×10 et max", (await page.locator(".batch-button").count()) === 3);
   await page.locator('.batch-button[data-size="10"]').click();
   await page.waitForTimeout(150);
@@ -520,6 +529,22 @@ async function checkClearReward(browser, fixture) {
     "il s'ouvre sur une planche qui a quelque chose à montrer",
     (await page.locator('.hex-cell[data-found="true"]').count()) > 0,
   );
+  // A found hex opens its own entry, and the entry survives the HUD tick that
+  // redraws the panel — it used to be wiped within a frame of being drawn.
+  await page.locator('.hex-cell[data-found="true"]').first().click();
+  await page.waitForTimeout(700);
+  const entry = await page.locator(".specimen").count();
+  check("une teinte trouvée ouvre sa fiche", entry === 1);
+  const entryLines = await page.locator(".specimen .reward-row").allInnerTexts();
+  check(
+    "la fiche dit d'où vient la teinte",
+    entryLines.length >= 4,
+    entryLines.map((l) => l.replace(/\n/g, " ")).join(" · "),
+  );
+  await page.locator('.ghost-button:has-text("Retour au nuancier")').click();
+  await page.waitForTimeout(300);
+  check("elle se referme sur la grille", (await page.locator(".hex-grid").count()) === 1);
+
   check(
     "il n'y a ni onglet de famille ni lot sur cette page",
     (await page.locator("#upgrade-subtabs").isHidden()) &&
@@ -538,6 +563,46 @@ async function checkClearReward(browser, fixture) {
  * a cannon can reach and one buried behind another, which only exists while
  * there is something left to bury.
  */
+/**
+ * La galerie : une image jouée s'y retrouve, avec son temps.
+ *
+ * Ce que ni le modèle ni ses tests ne peuvent dire : que la grille se dessine
+ * sur l'accueil, qu'elle porte une carte par image et qu'un temps s'y lit.
+ */
+async function checkGallery(browser, fixture) {
+  const ctx = await browser.newContext({ viewport: { width: 430, height: 932 } });
+  const page = await ctx.newPage();
+  await page.goto(URL, { waitUntil: "networkidle" });
+
+  // Vierge, la grille n'existe pas : un accueil qui montre une case vide
+  // promet quelque chose au lieu de dire quoi faire.
+  check("aucune galerie avant la première image", await page.locator("#gallery").isHidden());
+
+  await page.setInputFiles("#file-input", fixture);
+  await page.waitForSelector("#start-run:not([disabled])", { timeout: 60000 });
+  await page.waitForTimeout(400);
+
+  check("l'image rejoint la galerie dès l'import", await page.locator("#gallery").isVisible());
+  const cards = await page.locator(".gallery-card").count();
+  check("une carte par image", cards === 1, `${cards} carte(s)`);
+
+  // Une image jamais finie le dit, plutôt que d'afficher un temps qui n'existe pas.
+  const time = await page.locator(".gallery-time").first().innerText();
+  check("une image jamais finie le dit", time.includes("jamais"), time);
+
+  // Et la vignette est peinte, pas vide.
+  const painted = await page.evaluate(() => {
+    const canvas = document.querySelector(".gallery-thumb");
+    if (!canvas) return false;
+    const data = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+    for (let i = 3; i < data.length; i += 4) if (data[i] > 0) return true;
+    return false;
+  });
+  check("la vignette est peinte", painted);
+
+  await ctx.close();
+}
+
 async function checkPaletteBoard(browser, fixture) {
   const ctx = await browser.newContext({ viewport: { width: 430, height: 932 } });
   const page = await ctx.newPage();
@@ -605,6 +670,9 @@ async function checkPaletteBoard(browser, fixture) {
  * back; only what no gesture can reach counts as a failure.
  */
 async function checkTouchLayouts(browser, fixture) {
+  console.log("\n— galerie —");
+  await checkGallery(browser, fixture);
+
   console.log("\n— portees tactiles —");
 
   const sizes = [

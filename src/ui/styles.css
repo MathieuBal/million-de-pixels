@@ -1012,7 +1012,22 @@ html, body {
 /* A missing hex is a hole, not a grey swatch: it must not look catalogued. */
 .hex-cell[data-found="false"] { background: repeating-linear-gradient(
   45deg, #0e0e13, #0e0e13 2px, #14141a 2px, #14141a 4px); }
-.hex-cell[data-found="true"] { border-color: rgba(255, 255, 255, 0.18); }
+.hex-cell[data-found="true"] {
+  border-color: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+}
+.hex-cell[data-found="true"]:hover { border-color: var(--accent); }
+
+/* La fiche d'une teinte : la pastille en grand, et ce qu'on sait d'elle. */
+.specimen { display: flex; gap: 14px; align-items: flex-start; padding: 4px 0 10px; }
+.specimen-swatch {
+  flex: 0 0 auto;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+.specimen-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 
 .upgrade-batch { display: flex; gap: 6px; }
 /* `display: flex` beats the user agent's `[hidden] { display: none }`, so a

@@ -9,6 +9,7 @@ import { CANNON_MOVE_SPEED } from "../../src/cannon/ActiveCannon";
 import { DEFAULT_LOAD_AMMO } from "../../src/cannon/CannonLoad";
 import { VISIBLE_LOADS } from "../../src/cannon/CannonQueue";
 import { MAX_ACTIVE_CANNONS } from "../../src/combat/CombatSimulator";
+import { PERIMETER } from "../../src/combat/Cannon";
 
 describe("UpgradeState", () => {
   it("starts at the base game", () => {
@@ -269,5 +270,37 @@ describe("l'achat automatique et les portes", () => {
     for (const door of ["automate", "perce", "explosion", "foudre", "feu"] as const) {
       expect(shop.levelOf(door)).toBe(1);
     }
+  });
+});
+
+describe("l'automate doit pouvoir tenir le rail qu'on lui donne", () => {
+  it("lance plus vite qu'un canon ne fait le tour du plateau", () => {
+    // L'invariant que huit secondes violaient. Un canon quitte le rail après un
+    // tour sans morsure utile ; pour garder `MAX_ACTIVE_CANNONS` canons vivants
+    // il faut un lancement par tour et par emplacement. Un délai plus long ne
+    // remplit jamais le rail, et l'automate devient plus lent que le pouce
+    // qu'il remplace — mesuré : un canon sur le rail au lieu de cinq.
+    const lapMs = (PERIMETER / CANNON_MOVE_SPEED) * 1000;
+    expect(AUTO_LAUNCH_BASE_MS).toBeLessThan(lapMs / MAX_ACTIVE_CANNONS);
+  });
+
+  it("garde un plancher qui reste un délai", () => {
+    // En dessous d'une frame, « de temps en temps » est devenu « à chaque
+    // frame » et l'axe n'a plus rien à vendre.
+    expect(AUTO_LAUNCH_FLOOR_MS).toBeGreaterThanOrEqual(1000 / 60);
+    expect(AUTO_LAUNCH_FLOOR_MS).toBeLessThan(AUTO_LAUNCH_BASE_MS);
+  });
+
+  it("descend jusqu'au plancher sans épuiser son échelle", () => {
+    const shop = new UpgradeState({}, 100_000_000);
+    shop.buy("automate");
+    const definition = UPGRADES.find((u) => u.id === "cadence")!;
+    // Le plancher doit être atteignable *avant* le dernier niveau, sinon
+    // l'échelle s'arrête avant d'avoir tout donné — le défaut mesuré à −15 %
+    // par niveau, où l'axe mourait au niveau 24 sur 24.
+    expect(definition.valueAt(definition.maxLevel)).toBe(AUTO_LAUNCH_FLOOR_MS);
+    expect(definition.valueAt(Math.floor(definition.maxLevel * 0.6))).toBeGreaterThan(
+      AUTO_LAUNCH_FLOOR_MS,
+    );
   });
 });

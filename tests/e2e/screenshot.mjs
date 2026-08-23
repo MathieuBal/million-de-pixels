@@ -108,6 +108,10 @@ try {
     await page.waitForSelector("#upgrade-panel:not([hidden])");
     await page.locator('#upgrade-tabs button[data-tab="library"]').click();
     await page.waitForTimeout(400);
+    if (process.env.SHOT_SPECIMEN) {
+      await page.locator('.hex-cell[data-found="true"]').first().click();
+      await page.waitForTimeout(300);
+    }
     await page.screenshot({ path: OUT });
     await browser.close();
     process.exit(0);
@@ -187,6 +191,35 @@ try {
     await page.waitForSelector("#screen-import:not([hidden])", { timeout: 15000 });
     await page.waitForTimeout(600);
     await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
+  if (process.env.SHOT_AUTO) {
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+
+    const report = [];
+    await page.evaluate(() => {
+      const g = window.__game;
+      g.getUpgrades().earn(50_000);
+      g.buyUpgrade("automate");
+      g.setAutoLaunch(true);
+    });
+    for (let i = 0; i < 6; i++) {
+      await page.waitForTimeout(5000);
+      report.push(await page.evaluate(() => {
+        const g = window.__game;
+        return {
+          canons: document.querySelectorAll(".rail-token").length,
+          vivants: g.getWorld().aliveTotal(),
+          auto: g.isAutoLaunching,
+          delai: g.getUpgrades().effects(g.getMeta().bonus()).autoLaunchMs,
+        };
+      }));
+    }
+    console.log("AUTO " + JSON.stringify(report));
+    console.log("ERREURS " + JSON.stringify(errors.slice(0, 5)));
     await browser.close();
     process.exit(0);
   }

@@ -74,6 +74,16 @@ export interface Specimen {
   pixels: number;
   /** Times a colour of this hex was cleared outright. */
   clears: number;
+  /**
+   * The image it was first taken from, and when.
+   *
+   * What turns a grid of four thousand swatches into a book worth opening: an
+   * entry that says *where* it came from is a memory, an entry that says only
+   * that it exists is a checkbox. Absent on specimens catalogued before the
+   * gallery existed — an old save loses nothing but the caption.
+   */
+  fromImage?: string;
+  foundAtEpochMs?: number;
 }
 
 export type LibrarySnapshot = Record<string, Specimen>;
@@ -132,11 +142,36 @@ export function planeLabel(plane: number): string {
   return `R ${red.toString(16).padStart(2, "0").toUpperCase()}`;
 }
 
+/** La planche d'une teinte, lue sur son canal rouge. -1 si la chaîne est fausse. */
+function planeOf(hex: string): number {
+  const red = Number.parseInt(hex.slice(1, 3), 16);
+  if (!Number.isFinite(red) || red % 0x11 !== 0) return -1;
+  const plane = red / 0x11;
+  return plane >= 0 && plane < PLANE_COUNT ? plane : -1;
+}
+
 export class ColorLibrary {
   private readonly found: Map<string, Specimen>;
+  /**
+   * Teintes cataloguées par planche, tenues à jour à l'enregistrement.
+   *
+   * Recompter à la demande coûtait seize planches de deux cent cinquante-six
+   * chaînes reconstruites, et `bonus()` les lisait. Comme `bonus()` est appelé
+   * une fois par pixel détruit pour savoir ce qu'il vaut, cela faisait onze
+   * millions de constructions de chaîne par seconde à trois mille blocs par
+   * seconde : le jeu ne ralentissait pas, il étouffait sous le ramasse-miettes.
+   */
+  private readonly perPlane: Uint16Array;
+  private complete = 0;
 
   constructor(snapshot: LibrarySnapshot = {}) {
     this.found = new Map(Object.entries(snapshot));
+    this.perPlane = new Uint16Array(PLANE_COUNT);
+    for (const hex of this.found.keys()) {
+      const plane = planeOf(hex);
+      if (plane >= 0) this.perPlane[plane]++;
+    }
+    for (const count of this.perPlane) if (count >= PLANE_SIZE) this.complete++;
   }
 
   get discovered(): number {
@@ -158,9 +193,8 @@ export class ColorLibrary {
   /** What the grid pays, passively, for what it already holds. */
   /** Hexes catalogued on one plane of the cube, and how many it holds. */
   planeProgress(plane: number): { found: number; total: number } {
-    let found = 0;
-    for (const hex of hexesOfPlane(plane)) if (this.found.has(hex)) found++;
-    return { found, total: PLANE_SIZE };
+    const index = Math.max(0, Math.min(PLANE_COUNT - 1, plane));
+    return { found: this.perPlane[index], total: PLANE_SIZE };
   }
 
   /**
@@ -173,24 +207,15 @@ export class ColorLibrary {
    */
   get fullestPlane(): number {
     let best = 0;
-    let bestFound = -1;
-    for (let plane = 0; plane < PLANE_COUNT; plane++) {
-      const { found } = this.planeProgress(plane);
-      if (found > bestFound) {
-        bestFound = found;
-        best = plane;
-      }
+    for (let plane = 1; plane < PLANE_COUNT; plane++) {
+      if (this.perPlane[plane] > this.perPlane[best]) best = plane;
     }
     return best;
   }
 
   /** Planes with every hex catalogued. */
   get completePlanes(): number {
-    let complete = 0;
-    for (let plane = 0; plane < PLANE_COUNT; plane++) {
-      if (this.planeProgress(plane).found === PLANE_SIZE) complete++;
-    }
-    return complete;
+    return this.complete;
   }
 
   bonus(): LibraryBonus {
@@ -199,7 +224,11 @@ export class ColorLibrary {
   }
 
   /** Records a cleared colour. Returns the hex if it had never been seen. */
-  record(colour: { r: number; g: number; b: number; count: number }): string | null {
+  record(
+    colour: { r: number; g: number; b: number; count: number },
+    fromImage?: string,
+    nowMs = Date.now(),
+  ): string | null {
     const hex = hexOf(colour.r, colour.g, colour.b);
     const existing = this.found.get(hex);
 
@@ -210,8 +239,20 @@ export class ColorLibrary {
     }
 
     // The swatch keeps the first specimen: a colour that was really on a board,
-    // not the grid value it was filed under.
-    this.found.set(hex, { r: colour.r, g: colour.g, b: colour.b, pixels: colour.count, clears: 1 });
+    // not the grid value it was filed under. Same for the image it came from —
+    // a later toile that happens to hold the same hex does not rewrite where it
+    // was first met.
+    const plane = planeOf(hex);
+    if (plane >= 0 && ++this.perPlane[plane] === PLANE_SIZE) this.complete++;
+
+    this.found.set(hex, {
+      r: colour.r,
+      g: colour.g,
+      b: colour.b,
+      pixels: colour.count,
+      clears: 1,
+      ...(fromImage ? { fromImage, foundAtEpochMs: nowMs } : {}),
+    });
     return hex;
   }
 

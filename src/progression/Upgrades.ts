@@ -74,18 +74,26 @@ export interface UpgradeDefinition {
 /**
  * How long the automaton waits between two launches, before any upgrade.
  *
- * Eight seconds: enough that tapping is still worth it, little enough that
- * leaving the phone on the table finally does something. The whole point of
- * moving the automaton into the toile's own shop is that a run should idle from
- * its first minutes rather than after seven hours of profile — measured, before
- * this: the automaton was a permanent node bought on the sixth toile, and the
- * toile after it fell from fifty-eight minutes to seven. The entire difficulty
- * of the game was one purchase.
+ * A second and a half — slower than an attentive thumb, so tapping still pays,
+ * fast enough to keep a rail alive.
+ *
+ * Eight seconds was tried and is the reason this comment exists. A cannon leaves
+ * the rail after one lap without a productive burst — 4096 lanes at the base
+ * 260 a second, so about sixteen seconds — which means a rail of five needs a
+ * launch roughly every three to stay full. Every eight keeps two. Measured with
+ * the automaton on and nothing else bought: one cannon on the rail and a hundred
+ * and thirty pixels destroyed in twenty-five seconds, against seven hundred and
+ * fifty-three at a second and a half. Buying the automaton made the game *worse*
+ * than not buying it — the one thing an automation must never do.
+ *
+ * The floor and the ceiling are therefore tied to the lap, not to taste: a
+ * delay longer than `PERIMETER / CANNON_MOVE_SPEED / MAX_ACTIVE_CANNONS` cannot
+ * keep the rail it is given. `upgrades.test.ts` holds that invariant.
  */
-export const AUTO_LAUNCH_BASE_MS = 8000;
+export const AUTO_LAUNCH_BASE_MS = 1500;
 
 /** Floor on that delay: below this, a launch a frame is not a delay any more. */
-export const AUTO_LAUNCH_FLOOR_MS = 250;
+export const AUTO_LAUNCH_FLOOR_MS = 100;
 
 /**
  * The four axes a player can push, in two families.

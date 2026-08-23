@@ -62,6 +62,14 @@ export class UpgradePanel {
   private tab: "level" | "permanent" | "library" = "level";
   /** Which page of the colour book is open. Null until the panel picks one. */
   private libraryPlane: number | null = null;
+  /**
+   * The hex whose entry is open, if any.
+   *
+   * It has to live here rather than in the DOM: the panel re-renders on every
+   * HUD tick while it is open, so a card drawn straight into `rows` was wiped
+   * within a frame — it never survived long enough to be read.
+   */
+  private openSpecimen: string | null = null;
   /** Which family of the shop, or which branch of the tree, is on screen. */
   private family: UpgradeFamily = "rail";
   private branch: MetaBranch = "racine";
@@ -196,6 +204,9 @@ export class UpgradePanel {
 
   open(tab: "level" | "permanent" | "library" = this.tab): void {
     this.tab = tab;
+    // Reopening the panel comes back to the grid: a card left open from last
+    // time is an answer to a question nobody just asked.
+    this.openSpecimen = null;
     this.syncTabs();
     this.syncBatch();
     this.panel.hidden = false;
@@ -248,7 +259,8 @@ export class UpgradePanel {
     this.syncSubTabs();
 
     if (this.tab === "library") {
-      this.renderLibrary();
+      if (this.openSpecimen) this.renderSpecimen(this.openSpecimen);
+      else this.renderLibrary();
       return;
     }
     if (this.tab === "permanent") {
@@ -428,6 +440,7 @@ export class UpgradePanel {
       tab.setAttribute("aria-label", `Planche ${planeLabel(plane)}, ${found} sur ${PLANE_SIZE}`);
       tab.addEventListener("click", () => {
         this.libraryPlane = plane;
+        this.openSpecimen = null;
         this.renderPanel();
       });
       pages.appendChild(tab);
@@ -452,12 +465,78 @@ export class UpgradePanel {
         // value it was filed under.
         cell.style.background = `rgb(${specimen.r}, ${specimen.g}, ${specimen.b})`;
         cell.title = `${hex} · ${formatCount(specimen.pixels)} px · ${specimen.clears} fois`;
+        // A found hex opens its own entry: that is what makes this a book
+        // rather than a grid of four thousand checkboxes.
+        cell.tabIndex = 0;
+        cell.setAttribute("role", "button");
+        cell.addEventListener("click", () => {
+          this.openSpecimen = hex;
+          this.renderPanel();
+        });
       } else {
         cell.title = `${hex} — jamais épuisée`;
       }
       grid.appendChild(cell);
     }
     this.rows.appendChild(grid);
+  }
+
+  /**
+   * La fiche d'une teinte : où elle a été trouvée, et ce qu'elle a coûté.
+   *
+   * Quatre mille pastilles sans histoire sont un compteur ; une entrée qui dit
+   * de quelle image elle vient est un souvenir. C'est la différence entre une
+   * grille et un carnet de terrain — et la seule chose qui donne envie
+   * d'importer une image pour ses couleurs plutôt que pour ses pixels.
+   */
+  private renderSpecimen(hex: string): void {
+    const specimen = this.game.getMeta().library.specimen(hex);
+    if (!specimen) {
+      this.openSpecimen = null;
+      this.renderLibrary();
+      return;
+    }
+
+    const card = document.createElement("div");
+    card.className = "specimen";
+
+    const swatch = document.createElement("div");
+    swatch.className = "specimen-swatch";
+    swatch.style.background = `rgb(${specimen.r}, ${specimen.g}, ${specimen.b})`;
+
+    const lines: Array<[string, string]> = [
+      ["Teinte", hex],
+      ["Sur le plateau", `rgb(${specimen.r}, ${specimen.g}, ${specimen.b})`],
+      ["Pixels détruits", formatCount(specimen.pixels)],
+      ["Épuisée", `${specimen.clears} fois`],
+    ];
+    // Absent on a specimen catalogued before the gallery existed: an old save
+    // loses the caption, not the entry.
+    if (specimen.fromImage) lines.push(["Trouvée sur", specimen.fromImage]);
+    if (specimen.foundAtEpochMs) {
+      lines.push(["Le", new Date(specimen.foundAtEpochMs).toLocaleDateString("fr-FR")]);
+    }
+
+    const body = document.createElement("div");
+    body.className = "specimen-body";
+    for (const [label, value] of lines) {
+      const row = document.createElement("div");
+      row.className = "reward-row";
+      row.innerHTML = `<span>${label}</span><b>${value}</b>`;
+      body.appendChild(row);
+    }
+
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "ghost-button";
+    back.innerHTML = `<span class="label">Retour au nuancier</span>`;
+    back.addEventListener("click", () => {
+      this.openSpecimen = null;
+      this.renderPanel();
+    });
+
+    card.append(swatch, body);
+    this.rows.append(card, back);
   }
 
   private metaRow(definition: MetaUpgradeDefinition): HTMLElement {

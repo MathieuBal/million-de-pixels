@@ -33,7 +33,7 @@ import {
   VisualLODController,
 } from "../rendering/VisualLODController";
 import { RNG_ALGORITHM, XorShift32 } from "../rng/XorShift32";
-import { UpgradeState, type UpgradeId } from "../progression/Upgrades";
+import { UpgradeState, type UpgradeEffects, type UpgradeId } from "../progression/Upgrades";
 import {
   MetaProgression,
   type ClearReward,
@@ -86,6 +86,14 @@ const PROFILE_ID = "local";
 /** Settings key holding the profile's permanent progression. */
 const META_KEY = "meta:local";
 const GALLERY_KEY = "gallery:local";
+
+/**
+ * Lancements que l'automate peut rattraper d'un coup.
+ *
+ * Assez pour remplir un rail large ou pour absorber un onglet resté en veille,
+ * pas assez pour qu'un retour d'absence vide l'étal d'un seul bond.
+ */
+const AUTO_LAUNCH_CATCHUP = 8;
 const AUTOSAVE_INTERVAL_MS = 10_000;
 /** How often Emplette looks at the shop. Often enough to feel automatic. */
 const AUTO_BUY_INTERVAL_MS = 700;
@@ -296,9 +304,23 @@ export class GameController {
     return true;
   }
 
+  /**
+   * What the shop and the profile currently grant, recomputed only when one of
+   * them changes.
+   *
+   * It used to be read straight from `upgrades.effects(meta.bonus())` wherever
+   * it was needed — including once per destroyed pixel, to know what that pixel
+   * was worth. That was survivable until the colour book started counting its
+   * completed planes inside `bonus()`: sixteen planes of two hundred and
+   * fifty-six hexes, rebuilt as strings, three thousand times a second. Eleven
+   * million allocations per second is not a slow game, it is a stalled one.
+   */
+  private effects: UpgradeEffects = new UpgradeState().effects();
+
   private applyUpgrades(): void {
     const bonus = this.meta.bonus();
     const effects = this.upgrades.effects(bonus);
+    this.effects = effects;
 
     // Négoce discounts the shop the player is looking at, so it is set on the
     // state that prices it rather than folded into the balance.
@@ -556,7 +578,7 @@ export class GameController {
     // remainder is carried so a ×1.05 is not silently rounded away.
     let carry = 0;
     world.onDestroy(() => {
-      carry += this.upgrades.effects(this.meta.bonus()).fragmentsPerPixel;
+      carry += this.effects.fragmentsPerPixel;
       const whole = Math.floor(carry);
       if (whole > 0) {
         this.upgrades.earn(whole);
@@ -627,7 +649,9 @@ export class GameController {
 
     this.playedMs += deltaMs;
 
-    const shopping = this.upgrades.effects(this.meta.bonus());
+    // Read from the cache, never recomputed here: `effects()` walks the whole
+    // shop and `bonus()` the whole profile, and this runs sixty times a second.
+    const shopping = this.effects;
 
     if (shopping.canAutoBuy && nowMs - this.lastAutoBuyMs > AUTO_BUY_INTERVAL_MS) {
       this.lastAutoBuyMs = nowMs;
@@ -645,9 +669,14 @@ export class GameController {
     // quarter of a second. That is the axis the run is built around: the early
     // minutes are played by hand, and the toile automates itself as it pays.
     const autoMs = shopping.autoLaunchMs;
-    const autoDue = autoMs !== null && nowMs - this.lastAutoLaunchMs >= autoMs;
+    // Launches owed since the last one, not a single yes-or-no. A rail that
+    // holds twenty cannons and loses them after a lap cannot be kept alive one
+    // launch per frame-that-happened-to-be-due; and after a stall the automaton
+    // has to be allowed to catch up rather than silently drop what it owed.
+    const owed =
+      autoMs === null ? 0 : Math.min(AUTO_LAUNCH_CATCHUP, (nowMs - this.lastAutoLaunchMs) / autoMs);
 
-    if (this.autoLaunch && this.queue && autoDue) {
+    if (this.autoLaunch && this.queue && owed >= 1) {
       this.lastAutoLaunchMs = nowMs;
       // One per interval, not a loop: the rail should visibly fill rather than
       // blink from empty to full, and a slot that frees this frame is served
@@ -663,11 +692,13 @@ export class GameController {
       // minutes of it. It picks a colour something actually exposes, and only
       // falls back to the first offer when nothing does.
       const reachable = this.combat.reachableColors;
-      const offers = this.queue.visible;
-      const next =
-        (reachable ? offers.find((load) => reachable[load.colorId] !== false) : undefined) ??
-        offers[0];
-      if (next && this.combat.hasFreeSlot) this.launch(next.id);
+      for (let i = 0; i < owed && this.combat.hasFreeSlot; i++) {
+        const offers = this.queue.visible;
+        const next =
+          (reachable ? offers.find((load) => reachable[load.colorId] !== false) : undefined) ??
+          offers[0];
+        if (!next || !this.launch(next.id)) break;
+      }
     }
 
     const simStart = performance.now();
@@ -732,7 +763,12 @@ export class GameController {
       // unarguably finished — which is exactly what the library collects.
       const entry = this.world.palette[colour];
       const slot = entry
-        ? this.meta.library.record({ r: entry.r, g: entry.g, b: entry.b, count: entry.count })
+        ? this.meta.library.record(
+            { r: entry.r, g: entry.g, b: entry.b, count: entry.count },
+            // Where it was met. The gallery knows the image by name; without
+            // it the book has entries but no memories.
+            this.imageId === null ? undefined : (this.gallery.get(this.imageId)?.name ?? undefined),
+          )
         : null;
       if (slot) void this.saveMeta();
 
