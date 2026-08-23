@@ -24,14 +24,21 @@ describe("les doctrines", () => {
     for (const doctrine of DOCTRINES) {
       if (doctrine.id === DEFAULT_DOCTRINE) continue;
 
+      // Tous les axes, y compris ceux ajoutés après coup : une doctrine qui
+      // gagnerait sur une dimension que ce test ignore passerait pour gratuite.
       const gains =
         (doctrine.speedMultiplier > 1 ? 1 : 0) +
         (doctrine.ammoMultiplier > 1 ? 1 : 0) +
-        (doctrine.extraCannons > 0 ? 1 : 0);
+        (doctrine.extraCannons > 0 ? 1 : 0) +
+        (doctrine.fragmentMultiplier > 1 ? 1 : 0) +
+        // Un délai plus court est un gain : l'automate lance plus souvent.
+        (doctrine.autoLaunchMultiplier < 1 ? 1 : 0);
       const costs =
         (doctrine.speedMultiplier < 1 ? 1 : 0) +
         (doctrine.ammoMultiplier < 1 ? 1 : 0) +
-        (doctrine.extraCannons < 0 ? 1 : 0);
+        (doctrine.extraCannons < 0 ? 1 : 0) +
+        (doctrine.fragmentMultiplier < 1 ? 1 : 0) +
+        (doctrine.autoLaunchMultiplier > 1 ? 1 : 0);
 
       expect(gains).toBeGreaterThan(0);
       expect(costs).toBeGreaterThan(0);
@@ -71,7 +78,13 @@ describe("les doctrines", () => {
     const base = shop().effects();
     const shapes = DOCTRINES.map((d) => {
       const bent = applyDoctrine(base, d);
-      return `${bent.moveSpeed}/${bent.ammoPerLoad}/${bent.maxActiveCannons}`;
+      return [
+        bent.moveSpeed,
+        bent.ammoPerLoad,
+        bent.maxActiveCannons,
+        bent.fragmentsPerPixel.toFixed(3),
+        bent.autoLaunchMs,
+      ].join("/");
     });
     expect(new Set(shapes).size).toBe(DOCTRINES.length);
   });

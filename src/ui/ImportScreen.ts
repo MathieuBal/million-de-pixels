@@ -36,6 +36,7 @@ export class ImportScreen {
   private readonly cta = document.getElementById("start-run") as HTMLButtonElement;
   private readonly resumeButton = document.getElementById("resume-run") as HTMLButtonElement;
   private readonly treeButton = document.getElementById("import-tree") as HTMLButtonElement;
+  private readonly resetButton = document.getElementById("import-reset") as HTMLButtonElement;
   private readonly shardCount = document.getElementById("import-shards") as HTMLElement;
 
   private readonly paletteSize = document.getElementById("palette-size") as HTMLInputElement;
@@ -111,6 +112,40 @@ export class ImportScreen {
 
   onOpenTree(handler: () => void): void {
     this.treeButton.addEventListener("click", handler);
+  }
+
+  /**
+   * Le retour à zéro, armé en deux clics comme les autres gestes qui détruisent.
+   *
+   * Un seul clic sur « tout réinitialiser » serait la faute la plus chère de
+   * l'écran : ce bouton efface le profil, le nuancier et la galerie, et rien de
+   * tout ça ne se reconstitue. Le deuxième clic dit ce qu'il va faire.
+   */
+  onReset(handler: () => void): void {
+    const label = this.resetButton.querySelector(".label") as HTMLElement;
+    const original = label.textContent ?? "";
+    let armed = false;
+
+    const disarm = () => {
+      armed = false;
+      delete this.resetButton.dataset.armed;
+      label.textContent = original;
+    };
+
+    this.resetButton.addEventListener("click", () => {
+      if (armed) {
+        disarm();
+        handler();
+        return;
+      }
+      armed = true;
+      this.resetButton.dataset.armed = "true";
+      label.textContent = "Effacer définitivement ?";
+    });
+
+    // Sortir de l'écran désarme : un bouton laissé armé attendrait un clic que
+    // le joueur croirait donner à autre chose.
+    this.resetButton.addEventListener("blur", disarm);
   }
 
   /** The permanent tree is only worth offering once there is something in it. */
