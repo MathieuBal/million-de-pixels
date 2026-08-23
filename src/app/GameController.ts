@@ -42,6 +42,13 @@ import {
 } from "../progression/MetaProgression";
 import { ColorStats } from "../world/ColorStats";
 import { PixelWorld } from "../world/PixelWorld";
+import {
+  ImageGallery,
+  hashImage,
+  thumbnailOf,
+  type ClearOutcome,
+  type GallerySnapshot,
+} from "../progression/ImageGallery";
 import { isMobileProfile } from "./FeatureDetection";
 import { MilestoneTracker, type Milestone } from "./milestones";
 import { Profiler } from "./Profiler";
@@ -68,7 +75,7 @@ export interface GameEvents {
   /** A colour just ran out. The card leaves the offers with it. */
   onColorCleared?: (colorId: number, count: number, newToLibrary: boolean) => void;
   /** The board is empty. Fired once per pass, the moment the last pixel goes. */
-  onLevelCleared?: (pass: number, reward: ClearReward) => void;
+  onLevelCleared?: (pass: number, reward: ClearReward, time: ClearOutcome | null) => void;
   /** The level took over and is finishing itself. Fired once per pass. */
   onFinale?: () => void;
   onOfflineReport?: (report: OfflineReport) => void;
@@ -78,6 +85,7 @@ export interface GameEvents {
 const PROFILE_ID = "local";
 /** Settings key holding the profile's permanent progression. */
 const META_KEY = "meta:local";
+const GALLERY_KEY = "gallery:local";
 const AUTOSAVE_INTERVAL_MS = 10_000;
 /** How often Emplette looks at the shop. Often enough to feel automatic. */
 const AUTO_BUY_INTERVAL_MS = 700;
@@ -120,6 +128,23 @@ export class GameController {
   private levelId = "level-1";
   /** Times this image has been cleared. Zero on the first pass. */
   private completions = 0;
+  /**
+   * Temps réellement joué sur cette toile, en millisecondes.
+   *
+   * Accumulé frame par frame plutôt que déduit de deux horloges murales : une
+   * partie mise en pause, un onglet fermé ou une nuit de production hors-ligne
+   * ne doivent pas venir gonfler un record. Ce que le score mesure, c'est ce
+   * que le joueur a construit, pas la patience du navigateur.
+   */
+  private playedMs = 0;
+  /** Which image of the gallery this run is playing. */
+  private imageId: string | null = null;
+  private gallery = new ImageGallery();
+
+  /** The images already played, with their best times. */
+  getGallery(): ImageGallery {
+    return this.gallery;
+  }
   /** Latched so clearing the board announces itself once, not every frame. */
   private clearedAnnounced = false;
   /** Colours already announced, so the banner fires once each. */
@@ -351,7 +376,30 @@ export class GameController {
       // The automaton belongs to the toile, so a new toile has none: the toggle
       // comes back off with it rather than staying lit over nothing.
       this.autoLaunch = false;
+      this.playedMs = 0;
       this.prepared = PixelWorld.create(palette, colorId);
+
+      // The image joins the gallery at import, not at its first clear: a toile
+      // abandoned halfway is still an image the player has met, and its record
+      // line is what says "you left this one at 60 %".
+      this.imageId = hashImage(palette, this.prepared.colorId);
+      this.gallery.remember(
+        {
+          id: this.imageId,
+          name: file.name,
+          paletteSize: palette.length,
+          playablePixels: this.prepared.playablePixels,
+          swatches: palette.map((entry) => ({ r: entry.r, g: entry.g, b: entry.b })),
+          thumbnail: thumbnailOf(
+            this.prepared.colorId,
+            this.prepared.width,
+            this.prepared.height,
+          ),
+        },
+        Date.now(),
+      );
+      void this.saveGallery();
+
       this.events.onLevelPrepared?.(palette, this.prepared.colorId, this.prepared.width);
     } catch (error) {
       this.setPhase("idle");
@@ -416,6 +464,7 @@ export class GameController {
     this.completions = 0;
     this.upgrades = new UpgradeState({ ...bonus.carriedLevels }, bonus.startingFragments);
     this.autoLaunch = false;
+    this.playedMs = 0;
     this.rebuildFromBaseImage();
     return true;
   }
@@ -431,6 +480,10 @@ export class GameController {
   startNextPass(): boolean {
     if (!this.isCleared) return false;
     this.completions++;
+    // A pass is a run of its own, so its time starts at zero: the record is
+    // "how fast can this image be cleared", not "how long has this tab been
+    // open". A second pass keeps the build and should beat the first.
+    this.playedMs = 0;
     this.rebuildFromBaseImage();
     return true;
   }
@@ -571,6 +624,8 @@ export class GameController {
     const deltaMs = Math.min(this.app.ticker.deltaMS, 100); // clamp after a stall
 
     if (this.phase !== "playing" || !this.combat || !this.world || !this.board) return;
+
+    this.playedMs += deltaMs;
 
     const shopping = this.upgrades.effects(this.meta.bonus());
 
@@ -714,10 +769,17 @@ export class GameController {
         },
         this.upgrades.serialize().levels,
       );
+      // The time is what the player beat, so it is banked with the reward.
+      const outcome =
+        this.imageId === null
+          ? null
+          : this.gallery.noteClear(this.imageId, this.playedMs, reward.total, Date.now());
+
       this.saveDirty = true;
       void this.save();
       void this.saveMeta();
-      this.events.onLevelCleared?.(this.pass, reward);
+      void this.saveGallery();
+      this.events.onLevelCleared?.(this.pass, reward, outcome);
     }
 
     this.profiler.recordFrame(deltaMs, simMs);
@@ -810,6 +872,28 @@ export class GameController {
       if (snapshot) this.meta = MetaProgression.restore(snapshot);
     } catch {
       // A profile that will not load is not a reason to refuse to play.
+    }
+
+    try {
+      const gallery = await this.saves.getSetting<GallerySnapshot>(GALLERY_KEY);
+      if (gallery) this.gallery = ImageGallery.restore(gallery);
+    } catch {
+      // Same: a gallery that will not load costs a record, not a run.
+    }
+  }
+
+  /**
+   * The gallery rides in the settings store beside the profile, not in a level
+   * save: it outlives every image it holds, and a level save is deleted when
+   * the player changes picture.
+   */
+  private async saveGallery(): Promise<void> {
+    try {
+      await this.saves.setSetting(GALLERY_KEY, this.gallery.serialize());
+    } catch (error) {
+      this.events.onError?.(
+        `Galerie non sauvegardée : ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

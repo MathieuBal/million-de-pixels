@@ -113,6 +113,13 @@ try {
     process.exit(0);
   }
   if (process.env.SHOT_CLEAR) {
+    // Give the run a history so the clear panel has a record to beat.
+    await page.evaluate(() => {
+      const game = window.__game;
+      const gallery = game.getGallery();
+      const record = gallery.all()[0];
+      if (record) gallery.noteClear(record.id, 214_000, 25, Date.now());
+    });
     await page.evaluate(() => {
       const world = window.__game.getWorld();
       const rng = { nextInt: () => 0, nextFloat: () => 0, nextUint32: () => 1 };
