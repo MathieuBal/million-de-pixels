@@ -755,6 +755,11 @@ html, body {
   transition: border-color 120ms ease-out, background 120ms ease-out;
 }
 .ghost-button:hover:not(:disabled) { border-color: var(--accent); }
+/* La sortie destructrice : discrète tant qu'elle dort, franche une fois armée. */
+.ghost-danger .label { color: var(--muted-2); font-weight: 500; }
+.ghost-danger:hover:not(:disabled) { border-color: var(--danger); }
+.ghost-danger[data-armed="true"] { border-color: var(--danger); background: rgba(226, 85, 63, 0.1); }
+.ghost-danger[data-armed="true"] .label { color: var(--danger); font-weight: 600; }
 .ghost-button:disabled { opacity: 0.45; cursor: not-allowed; }
 .ghost-button .label { font-size: 15px; font-weight: 600; }
 .ghost-button .hint { font-size: 12px; color: var(--muted); line-height: 1.35; }

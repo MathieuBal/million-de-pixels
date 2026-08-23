@@ -97,6 +97,19 @@ async function boot(): Promise<void> {
   offlineScreen = new OfflineScreen(() => {});
 
   runMenu = new RunMenu(game, () => gameScreen.upgrades.open("permanent"));
+  importScreen.onReset(() => {
+    void (async () => {
+      await game.resetEverything();
+      // Tout ce qui affiche du profil doit repartir de zéro avec lui : la
+      // galerie, la doctrine, les éclats et l'offre de reprendre une partie.
+      gallery?.render();
+      doctrine?.render();
+      importScreen.setShards(0);
+      importScreen.setResumable(false);
+      gameScreen.upgrades.hide();
+    })();
+  });
+
   gallery = new GalleryPanel(game);
   doctrine = new DoctrinePanel(game);
 

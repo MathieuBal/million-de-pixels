@@ -495,6 +495,38 @@ export class GameController {
     this.setPhase("idle");
   }
 
+  /**
+   * Efface tout et repart d'un profil vierge.
+   *
+   * Pour tester une progression depuis zéro, et parce qu'un jeu qui accumule
+   * dans IndexedDB sans offrir de porte de sortie oblige à aller vider le
+   * navigateur à la main.
+   *
+   * L'ordre compte. La mémoire est remise à neuf **avant** l'effacement du
+   * disque, pas après : si l'écriture échoue, on se retrouve avec un profil
+   * vierge en mémoire et un disque intact, donc un rechargement rend tout — un
+   * état gênant mais réversible. L'ordre inverse rendrait un disque vide et une
+   * mémoire pleine qui le réécrirait à la première sauvegarde, c'est-à-dire une
+   * réinitialisation qui ne réinitialise rien.
+   */
+  async resetEverything(): Promise<void> {
+    this.teardownLevel();
+    this.world = null;
+    this.prepared = null;
+    this.imageId = null;
+    this.completions = 0;
+    this.playedMs = 0;
+    this.autoLaunch = false;
+    this.doctrineId = DEFAULT_DOCTRINE;
+    this.meta = new MetaProgression();
+    this.gallery = new ImageGallery();
+    this.upgrades = new UpgradeState();
+    this.saveDirty = false;
+    this.setPhase("idle");
+
+    await this.saves.clearEverything();
+  }
+
   /** Comes back to the level `suspendForImport()` set aside. */
   resume(): boolean {
     if (!this.canResume) return false;

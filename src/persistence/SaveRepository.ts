@@ -97,6 +97,27 @@ export class SaveRepository {
   }
 
   /** Best-effort storage report for the UI; never throws. */
+  /**
+   * Efface tout : les niveaux et les réglages, donc le profil, le nuancier et
+   * la galerie avec.
+   *
+   * Les deux magasins sont vidés dans **une seule transaction**. Les vider l'un
+   * après l'autre laisserait une fenêtre où le profil a disparu mais où une
+   * partie sauvegardée le référence encore — un rechargement mal placé
+   * ressusciterait une toile sans le profil qui l'a payée.
+   */
+  async clearEverything(): Promise<void> {
+    const db = await this.open();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([STORE_LEVELS, STORE_SETTINGS], "readwrite");
+      tx.objectStore(STORE_LEVELS).clear();
+      tx.objectStore(STORE_SETTINGS).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+
   static async estimate(): Promise<{ usage: number; quota: number; persisted: boolean } | null> {
     if (typeof navigator === "undefined" || !navigator.storage?.estimate) return null;
     try {
