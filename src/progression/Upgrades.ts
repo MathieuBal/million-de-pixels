@@ -74,26 +74,32 @@ export interface UpgradeDefinition {
 /**
  * How long the automaton waits between two launches, before any upgrade.
  *
- * A second and a half — slower than an attentive thumb, so tapping still pays,
- * fast enough to keep a rail alive.
+ * Four hundred milliseconds, and the number is bounded by how long a cannon
+ * lives, not by how long it takes to go round.
  *
- * Eight seconds was tried and is the reason this comment exists. A cannon leaves
- * the rail after one lap without a productive burst — 4096 lanes at the base
- * 260 a second, so about sixteen seconds — which means a rail of five needs a
- * launch roughly every three to stay full. Every eight keeps two. Measured with
- * the automaton on and nothing else bought: one cannon on the rail and a hundred
- * and thirty pixels destroyed in twenty-five seconds, against seven hundred and
- * fifty-three at a second and a half. Buying the automaton made the game *worse*
- * than not buying it — the one thing an automation must never do.
+ * That distinction is the whole bug. A cannon leaves the rail when its stock is
+ * spent, and a base load of forty rounds is spent in about a second and a
+ * quarter — it never gets near the sixteen seconds a lap takes. Bounding the
+ * delay by the lap gave 1500 ms, which is *longer than a cannon lives*: one
+ * cannon appeared, fired for a second, vanished, and the rail sat empty until
+ * the next one. Advance, stop, start again. The rail is meant to turn.
  *
- * The floor and the ceiling are therefore tied to the lap, not to taste: a
- * delay longer than `PERIMETER / CANNON_MOVE_SPEED / MAX_ACTIVE_CANNONS` cannot
- * keep the rail it is given. `upgrades.test.ts` holds that invariant.
+ * Below a cannon's life the rail never empties, and every level of Cadence adds
+ * one that overlaps — until the top of the axis, where the delay is gone
+ * altogether and a freed slot is served on the very next frame.
  */
-export const AUTO_LAUNCH_BASE_MS = 1500;
+export const AUTO_LAUNCH_BASE_MS = 400;
 
-/** Floor on that delay: below this, a launch a frame is not a delay any more. */
-export const AUTO_LAUNCH_FLOOR_MS = 100;
+/**
+ * The delay at the top of the axis: none.
+ *
+ * Not a floor to stop at but the destination — "at maximum there is no delay
+ * any more" is what the axis promises, so it is what it does.
+ */
+export const AUTO_LAUNCH_FLOOR_MS = 0;
+
+/** Levels of Cadence, from the base delay down to none. */
+export const CADENCE_LEVELS = 40;
 
 /**
  * The four axes a player can push, in two families.
@@ -243,18 +249,24 @@ export const UPGRADES: UpgradeDefinition[] = [
     // hit its floor at level twenty-four with two thirds of the toile left to
     // play. A ladder that ends is not a ladder. Five percent a level spreads the
     // same span over sixty-eight, and the price carries the weight instead.
-    maxLevel: 80,
+    maxLevel: CADENCE_LEVELS,
     basePrice: 400,
-    // 1.09 was measured to cost 23 % of a toile's whole income to reach the
-    // floor, and a toile that had bought it ran fourteen minutes longer for it:
-    // fragments spent on the automaton's clock are fragments not spent on the
-    // axes that destroy pixels. 1.075 keeps the ladder long without making it
-    // the only thing a toile can afford.
-    priceGrowth: 1.075,
+    priceGrowth: 1.18,
     requires: ["automate"],
+    // A curve that lands exactly on zero rather than a decay that only
+    // approaches it: an axis whose last level still leaves a delay has not kept
+    // what it promised, and one that reaches its floor at level twenty-four of
+    // eighty spends the rest of the toile selling nothing. Squared, so the
+    // early levels — the ones bought while the rail is still stuttering — are
+    // the ones that give the most.
     valueAt: (level) =>
-      Math.max(AUTO_LAUNCH_FLOOR_MS, Math.round(AUTO_LAUNCH_BASE_MS * 0.95 ** level)),
-    format: (value) => `${(value / 1000).toFixed(2)} s`,
+      level >= CADENCE_LEVELS
+        ? AUTO_LAUNCH_FLOOR_MS
+        : // Un millième de seconde au minimum tant qu'on n'est pas au bout : le
+          // dernier niveau doit être le premier à zéro, sinon l'axe annonce
+          // « sans délai » plusieurs niveaux avant de l'avoir vendu.
+          Math.max(1, Math.round(AUTO_LAUNCH_BASE_MS * (1 - level / CADENCE_LEVELS) ** 2)),
+    format: (value) => (value === 0 ? "sans délai" : `${(value / 1000).toFixed(2)} s`),
   },
   {
     id: "emplette",

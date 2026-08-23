@@ -669,12 +669,18 @@ export class GameController {
     // quarter of a second. That is the axis the run is built around: the early
     // minutes are played by hand, and the toile automates itself as it pays.
     const autoMs = shopping.autoLaunchMs;
-    // Launches owed since the last one, not a single yes-or-no. A rail that
-    // holds twenty cannons and loses them after a lap cannot be kept alive one
-    // launch per frame-that-happened-to-be-due; and after a stall the automaton
-    // has to be allowed to catch up rather than silently drop what it owed.
+    // Launches owed since the last one, not a single yes-or-no. A cannon leaves
+    // the rail when its stock is spent — about a second for a base load — so a
+    // rail is kept turning by owing launches and paying them, not by asking
+    // once a frame whether one is due. At the top of Cadence the delay is zero
+    // and every free slot is served on the spot; after a stall the automaton
+    // catches up instead of silently dropping what it owed.
     const owed =
-      autoMs === null ? 0 : Math.min(AUTO_LAUNCH_CATCHUP, (nowMs - this.lastAutoLaunchMs) / autoMs);
+      autoMs === null
+        ? 0
+        : autoMs <= 0
+          ? AUTO_LAUNCH_CATCHUP
+          : Math.min(AUTO_LAUNCH_CATCHUP, (nowMs - this.lastAutoLaunchMs) / autoMs);
 
     if (this.autoLaunch && this.queue && owed >= 1) {
       this.lastAutoLaunchMs = nowMs;

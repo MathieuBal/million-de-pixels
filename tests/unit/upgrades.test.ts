@@ -274,33 +274,36 @@ describe("l'achat automatique et les portes", () => {
 });
 
 describe("l'automate doit pouvoir tenir le rail qu'on lui donne", () => {
-  it("lance plus vite qu'un canon ne fait le tour du plateau", () => {
-    // L'invariant que huit secondes violaient. Un canon quitte le rail après un
-    // tour sans morsure utile ; pour garder `MAX_ACTIVE_CANNONS` canons vivants
-    // il faut un lancement par tour et par emplacement. Un délai plus long ne
-    // remplit jamais le rail, et l'automate devient plus lent que le pouce
-    // qu'il remplace — mesuré : un canon sur le rail au lieu de cinq.
-    const lapMs = (PERIMETER / CANNON_MOVE_SPEED) * 1000;
-    expect(AUTO_LAUNCH_BASE_MS).toBeLessThan(lapMs / MAX_ACTIVE_CANNONS);
-  });
-
-  it("garde un plancher qui reste un délai", () => {
-    // En dessous d'une frame, « de temps en temps » est devenu « à chaque
-    // frame » et l'axe n'a plus rien à vendre.
-    expect(AUTO_LAUNCH_FLOOR_MS).toBeGreaterThanOrEqual(1000 / 60);
-    expect(AUTO_LAUNCH_FLOOR_MS).toBeLessThan(AUTO_LAUNCH_BASE_MS);
-  });
-
-  it("descend jusqu'au plancher sans épuiser son échelle", () => {
-    const shop = new UpgradeState({}, 100_000_000);
-    shop.buy("automate");
-    const definition = UPGRADES.find((u) => u.id === "cadence")!;
-    // Le plancher doit être atteignable *avant* le dernier niveau, sinon
-    // l'échelle s'arrête avant d'avoir tout donné — le défaut mesuré à −15 %
-    // par niveau, où l'axe mourait au niveau 24 sur 24.
-    expect(definition.valueAt(definition.maxLevel)).toBe(AUTO_LAUNCH_FLOOR_MS);
-    expect(definition.valueAt(Math.floor(definition.maxLevel * 0.6))).toBeGreaterThan(
-      AUTO_LAUNCH_FLOOR_MS,
+  it("relance avant qu'un canon n'ait fini de mourir", () => {
+    // L'invariant, et la borne est la vie d'un canon — pas le tour du plateau.
+    // Un canon quitte le rail quand son stock est dépensé : quarante billes à
+    // une voie sur huit de sa couleur, c'est environ une seconde et quart, très
+    // loin des seize secondes d'un tour. Borner le délai sur le tour donnait
+    // 1,5 s, soit *plus long qu'un canon ne vit* : un canon apparaît, tire une
+    // seconde, disparaît, et le rail reste vide jusqu'au suivant. Avance,
+    // arrêt, reprise.
+    const lifeMs = (DEFAULT_LOAD_AMMO * 8 * 1000) / CANNON_MOVE_SPEED;
+    expect(AUTO_LAUNCH_BASE_MS).toBeLessThan(lifeMs);
+    // Et le tour reste une borne supérieure évidente, très au-dessus.
+    expect(AUTO_LAUNCH_BASE_MS).toBeLessThan(
+      ((PERIMETER / CANNON_MOVE_SPEED) * 1000) / MAX_ACTIVE_CANNONS,
     );
+  });
+
+  it("finit sans aucun délai, et pas avant la fin", () => {
+    const definition = UPGRADES.find((u) => u.id === "cadence")!;
+    // « Au maximum il n'y a plus de délai » est ce que l'axe promet, donc ce
+    // qu'il fait — et le dernier niveau est le premier à zéro, sinon l'échelle
+    // passe sa fin à ne rien vendre.
+    expect(definition.valueAt(definition.maxLevel)).toBe(AUTO_LAUNCH_FLOOR_MS);
+    expect(AUTO_LAUNCH_FLOOR_MS).toBe(0);
+    expect(definition.valueAt(definition.maxLevel - 1)).toBeGreaterThan(0);
+  });
+
+  it("ne remonte jamais en descendant", () => {
+    const definition = UPGRADES.find((u) => u.id === "cadence")!;
+    for (let level = 1; level <= definition.maxLevel; level++) {
+      expect(definition.valueAt(level)).toBeLessThanOrEqual(definition.valueAt(level - 1));
+    }
   });
 });
