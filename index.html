@@ -50,6 +50,19 @@
 
         <p id="drop-error" class="error" hidden></p>
 
+        <!--
+          Les images déjà jouées. La grille n'existe pas avant la première :
+          un écran d'accueil qui montre une case vide promet quelque chose au
+          lieu de dire quoi faire.
+        -->
+        <section id="gallery" class="gallery" hidden>
+          <div class="gallery-head">
+            <span class="eyebrow">Vos toiles</span>
+            <span id="gallery-count" class="value">—</span>
+          </div>
+          <div id="gallery-grid" class="gallery-grid"></div>
+        </section>
+
         <div id="import-rows" class="setting-rows">
           <div class="setting-row">
             <span class="label">Cadrage</span><span class="value">contain · silhouette</span>

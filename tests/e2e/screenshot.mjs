@@ -164,6 +164,32 @@ try {
     await browser.close();
     process.exit(0);
   }
+  if (process.env.SHOT_GALLERY) {
+    // Une galerie plausible : quelques images, des temps, une jamais finie.
+    await page.evaluate(() => {
+      const g = window.__game.getGallery();
+      const seed = g.all()[0];
+      if (seed) {
+        g.noteClear(seed.id, 726_000, 25, Date.now() - 400_000);
+        g.noteClear(seed.id, 512_000, 31, Date.now() - 300_000);
+        for (const [i, name] of ["montagne.jpg", "portrait.png", "affiche-2.webp"].entries()) {
+          g.remember({ ...seed, id: `demo-${i}`, name }, Date.now() - i * 10_000);
+          if (i < 2) g.noteClear(`demo-${i}`, 300_000 + i * 240_000, 20, Date.now() - i * 9000);
+        }
+      }
+    });
+    // Retour à l'accueil par le chemin du joueur : le menu, puis « changer »,
+    // qui demande deux clics — le premier ne fait qu'armer le bouton.
+    await page.locator("#menu").click();
+    await page.waitForSelector("#run-menu:not([hidden])");
+    await page.locator("#run-change").click();
+    await page.locator("#run-change").click();
+    await page.waitForSelector("#screen-import:not([hidden])", { timeout: 15000 });
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: OUT });
+    await browser.close();
+    process.exit(0);
+  }
   if (process.env.SHOT_PANEL) {
     await page.locator("#pause").click();
     await page.waitForSelector("#upgrade-panel:not([hidden])");
