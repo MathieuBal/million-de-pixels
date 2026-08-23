@@ -19,8 +19,25 @@ import type { UpgradeEffects } from "./Upgrades";
  * C'est aussi ce qui relie enfin les trois systèmes : la galerie garde le
  * meilleur temps, et « meilleur temps sur cette image » cesse d'être une
  * question de patience pour devenir une question de doctrine.
+ *
+ * **Pourquoi elles ne sont que trois.** Cinq troisièmes doctrines ont été
+ * écrites et mesurées, aucune n'a été première nulle part : largeur payée en
+ * billes, en vitesse, en fragments, largeur avec la cadence pour la remplir,
+ * puis économie pure. Toutes deuxièmes ou pires, aux deux tempos et sur huit
+ * comme sur seize couleurs.
+ *
+ * La raison n'est pas dans les chiffres, elle est dans le jeu : **il n'a
+ * aujourd'hui qu'un seul axe stratégique**, l'abondance ou la rareté des
+ * lancements, et Meule et Fonte en occupent les deux bouts. Toute doctrine de
+ * plus retombe quelque part sur cet axe et s'y fait battre par celle qui en
+ * tient l'extrémité. Une quatrième doctrine demande d'abord un deuxième axe
+ * dans le jeu — pas un cinquième réglage de celui-ci.
+ *
+ * Franche n'est pas une concurrente : c'est le point de référence, ce que vaut
+ * la toile sans engagement, et la valeur par défaut de qui n'a pas encore
+ * choisi.
  */
-export type DoctrineId = "franche" | "meule" | "fonte" | "essaim";
+export type DoctrineId = "franche" | "meule" | "fonte";
 
 export interface DoctrineDefinition {
   id: DoctrineId;
@@ -82,37 +99,6 @@ export const DOCTRINES: DoctrineDefinition[] = [
     extraCannons: 0,
     fragmentMultiplier: 1,
     autoLaunchMultiplier: 1,
-  },
-  {
-    id: "essaim",
-    label: "Essaim",
-    glyph: "+3",
-    gain: "+3 canons sur le rail",
-    // Le coût ne peut toucher ni les billes ni la vitesse, et les deux ont été
-    // mesurés. En billes : un canon dépense son chargeur puis quitte le rail,
-    // donc amputer les billes raccourcit sa vie — 0,92 s, 2,3 canons tenus sur
-    // les 8 emplacements que la doctrine vient d'acheter. En vitesse : c'est le
-    // débit lui-même qu'on ampute, précisément dans le régime où les
-    // emplacements paieraient. Les deux versions n'étaient premières à aucun
-    // tempo, et la seconde finissait dernière sur seize couleurs — l'image même
-    // que sa fiche promettait.
-    //
-    // Le seul coût qui ne combat pas son propre gain est celui qui ne touche
-    // pas au rail : Essaim détruit large et vite, mais chaque pixel rapporte
-    // moins. Aller large se paie en économie, pas en puissance.
-    gain2: "et l'automate lance 40 % plus vite",
-    cost: "−25 % de fragments par pixel",
-    suits: "les palettes larges, quand on a déjà de quoi acheter",
-    speedMultiplier: 1,
-    ammoMultiplier: 1,
-    extraCannons: 3,
-    fragmentMultiplier: 0.75,
-    // Sans ça les trois emplacements restent vides, et c'est mesuré trois fois :
-    // à 400 ms entre deux lancements le rail ne tient qu'environ trois canons,
-    // quel que soit le nombre d'emplacements achetés. Une doctrine qui vend de
-    // la largeur doit vendre de quoi la remplir, sinon son gain est inerte et
-    // seul son coût se voit.
-    autoLaunchMultiplier: 0.6,
   },
 ];
 

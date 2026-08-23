@@ -564,6 +564,90 @@ async function checkClearReward(browser, fixture) {
  * there is something left to bury.
  */
 /**
+ * La remise à zéro, exercée pour de vrai.
+ *
+ * Effacer IndexedDB est exactement le genre d'opération qui compile, se teste
+ * unitairement sans rien prouver, et échoue dans un navigateur : une
+ * transaction avortée, un panneau qui garde l'ancien profil en mémoire, une
+ * partie qui se réécrit derrière. Le seul test qui vaut quelque chose joue,
+ * banque, efface, **recharge**, et regarde ce qui reste.
+ */
+async function checkReset(browser, fixture) {
+  const ctx = await browser.newContext({ viewport: { width: 430, height: 932 } });
+  const page = await ctx.newPage();
+  await page.goto(URL, { waitUntil: "networkidle" });
+
+  // Un profil qui a vécu : des éclats, une image en galerie, des teintes au
+  // nuancier. Effacer un profil vide ne prouverait rien.
+  await page.setInputFiles("#file-input", fixture);
+  await page.waitForSelector("#start-run:not([disabled])", { timeout: 60000 });
+  await page.evaluate(() => {
+    const meta = window.__game.getMeta();
+    meta.recordClear({ playablePixels: 900_000, paletteSize: 8, awkwardColors: 4, pass: 1 });
+    meta.library.record({ r: 204, g: 51, b: 51, count: 5000 }, "affiche.png");
+  });
+  await page.locator("#start-run").click();
+  await page.waitForSelector("#screen-game:not([hidden])", { timeout: 60000 });
+  await page.waitForTimeout(1500);
+
+  const before = await page.evaluate(() => ({
+    shards: window.__game.getMeta().balance,
+    images: window.__game.getGallery().size,
+    hexes: window.__game.getMeta().library.discovered,
+  }));
+  check(
+    "le profil a de quoi être effacé",
+    before.shards > 0 && before.images > 0 && before.hexes > 0,
+    `${before.shards} éclats · ${before.images} image(s) · ${before.hexes} teinte(s)`,
+  );
+
+  // Retour à l'accueil, puis les deux clics.
+  await page.locator("#menu").click();
+  await page.waitForSelector("#run-menu:not([hidden])");
+  await page.locator("#run-change").click();
+  await page.locator("#run-change").click();
+  await page.waitForSelector("#screen-import:not([hidden])", { timeout: 15000 });
+
+  await page.locator("#import-reset").click();
+  check(
+    "la remise à zéro demande confirmation",
+    (await page.locator("#import-reset").getAttribute("data-armed")) === "true",
+  );
+  await page.locator("#import-reset").click();
+  await page.waitForTimeout(1200);
+
+  const after = await page.evaluate(() => ({
+    shards: window.__game.getMeta().balance,
+    images: window.__game.getGallery().size,
+    hexes: window.__game.getMeta().library.discovered,
+  }));
+  check(
+    "tout est remis à zéro en mémoire",
+    after.shards === 0 && after.images === 0 && after.hexes === 0,
+    `${after.shards} éclats · ${after.images} image(s) · ${after.hexes} teinte(s)`,
+  );
+  check("la galerie disparaît avec les images", await page.locator("#gallery").isHidden());
+
+  // Le seul contrôle qui prouve que le disque a suivi : recharger.
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(1200);
+  const reloaded = await page.evaluate(() => ({
+    shards: window.__game.getMeta().balance,
+    images: window.__game.getGallery().size,
+    hexes: window.__game.getMeta().library.discovered,
+    resumable: !document.getElementById("resume-run").hidden,
+  }));
+  check(
+    "et le rechargement ne ressuscite rien",
+    reloaded.shards === 0 && reloaded.images === 0 && reloaded.hexes === 0 && !reloaded.resumable,
+    `${reloaded.shards} éclats · ${reloaded.images} image(s) · ${reloaded.hexes} teinte(s)` +
+      `${reloaded.resumable ? " · une partie traîne encore" : ""}`,
+  );
+
+  await ctx.close();
+}
+
+/**
  * La galerie : une image jouée s'y retrouve, avec son temps.
  *
  * Ce que ni le modèle ni ses tests ne peuvent dire : que la grille se dessine
@@ -672,6 +756,9 @@ async function checkPaletteBoard(browser, fixture) {
 async function checkTouchLayouts(browser, fixture) {
   console.log("\n— galerie —");
   await checkGallery(browser, fixture);
+
+  console.log("\n— remise a zero —");
+  await checkReset(browser, fixture);
 
   console.log("\n— portees tactiles —");
 
