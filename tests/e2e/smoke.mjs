@@ -198,11 +198,15 @@ try {
 
   // The automaton too, with the delay it starts at.
   await page.locator('.sub-tab[data-id="automatisme"]').click();
+  // Match the row's own name, not any text in it: the locked rows below say
+  // "demande Automate", which is exactly the behaviour being checked.
+  const autoNames = await page.locator(".upgrade-row .name").allInnerTexts();
   check(
     "l'automate est un achat de la toile",
-    (await page.locator('.upgrade-row:has-text("Automate")').count()) === 1,
+    autoNames.some((n) => n.startsWith("Automate")),
+    autoNames.join(" · "),
   );
-  const cadence = page.locator('.upgrade-row:has-text("Cadence")').first();
+  const cadence = page.locator('.upgrade-row:has(.name:text-is("Cadence"))').first();
   check(
     "sa cadence attend qu'il existe",
     (await cadence.getAttribute("data-state")) === "locked",
