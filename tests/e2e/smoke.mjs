@@ -464,25 +464,35 @@ async function checkClearReward(browser, fixture) {
   const shards = digits(await page.locator("#upgrade-shards").innerText());
   check("les éclats sont au crédit du profil", shards === total, `${shards} au solde`);
 
-  // A branch opens only when its capability is paid for — and then it is there.
-  await page.locator('.sub-tab[data-id="explosion"]').click();
+  // A door opens only when it is paid for — and then what was behind it is
+  // there. The doors live in the toile's own shop now, so that is where this
+  // looks; the profile's tree keeps only what survives an image.
+  await page.locator('#upgrade-tabs button[data-tab="level"]').click();
+  await page.locator('.sub-tab[data-id="capacites"]').click();
   check(
     "la branche est verrouillée avant sa capacité",
-    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 2,
+    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 8,
   );
+  await page.evaluate(() => {
+    const game = window.__game;
+    game.getUpgrades().earn(1_000_000);
+    game.buyUpgrade("explosion");
+  });
+  await page.locator('.sub-tab[data-id="rail"]').click();
+  await page.locator('.sub-tab[data-id="capacites"]').click();
+  check(
+    "elle devient achetable une fois la capacité acquise",
+    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 6 &&
+      (await page.locator('.upgrade-row:has(.name:text-is("Souffle · niv. 0"))').count()) === 1,
+  );
+
+  // The profile keeps the palette unlock, which is not a capability.
   await page.evaluate(() => {
     const meta = window.__game.getMeta();
     meta.recordClear({ playablePixels: 60_000_000, paletteSize: 8, awkwardColors: 5, pass: 1 });
-    meta.buy("explosion");
     meta.buy("nuancier");
   });
-  await page.locator('.sub-tab[data-id="racine"]').click();
-  await page.locator('.sub-tab[data-id="explosion"]').click();
-  check(
-    "elle devient achetable une fois la capacité acquise",
-    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 0 &&
-      (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 1,
-  );
+  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
 
   // The library: a hex is catalogued by clearing a colour that snaps to it, and
   // pays passively from then on.
