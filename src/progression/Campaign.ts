@@ -849,6 +849,51 @@ export function campaignByDifficulty(): CampaignImage[] {
   });
 }
 
+/**
+ * Ce que le joueur a fini, et jusqu'où la campagne lui est ouverte.
+ *
+ * Une campagne n'est pas une liste : c'est une pente, et une pente ne veut dire
+ * quelque chose que si on ne peut pas la sauter. Mais un verrou trop strict
+ * transforme une toile qui bloque en cul-de-sac — et une toile *peut* bloquer,
+ * c'est même ce que la note à cinq mesure. D'où la règle : chaque toile finie
+ * ouvre les **deux** suivantes. On avance en ligne droite, mais il y a toujours
+ * un chemin de côté quand celle d'en face résiste.
+ */
+export const CAMPAIGN_LOOKAHEAD = 2;
+
+export interface CampaignProgress {
+  /** Les identifiants des toiles menées jusqu'au bout. */
+  cleared: string[];
+}
+
+/** Les toiles jouables : celles finies, plus la marge que la dernière ouvre. */
+export function unlockedCount(progress: CampaignProgress): number {
+  // Deux ouvertes au départ, pour que le premier écran offre déjà un choix
+  // plutôt qu'une seule porte.
+  return Math.min(CAMPAIGN.length, CAMPAIGN_LOOKAHEAD + progress.cleared.length);
+}
+
+export interface CampaignEntry {
+  image: CampaignImage;
+  index: number;
+  cleared: boolean;
+  unlocked: boolean;
+}
+
+/** La campagne telle que l'écran doit la montrer : en ordre, avec ses verrous. */
+export function campaignEntries(progress: CampaignProgress): CampaignEntry[] {
+  const cleared = new Set(progress.cleared);
+  const open = unlockedCount(progress);
+  return campaignByDifficulty().map((image, index) => ({
+    image,
+    index,
+    cleared: cleared.has(image.id),
+    // Une toile finie reste ouverte même si elle sortait de la marge : on doit
+    // pouvoir y retourner pour battre son temps.
+    unlocked: index < open || cleared.has(image.id),
+  }));
+}
+
 /** Charge une image de campagne comme si le joueur venait de la déposer. */
 export async function fetchCampaignImage(image: CampaignImage): Promise<File> {
   const url = `${import.meta.env.BASE_URL}campagne/${image.file}`;

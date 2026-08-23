@@ -6,6 +6,7 @@ import { ImportScreen } from "./ui/ImportScreen";
 import { RunMenu } from "./ui/RunMenu";
 import { GalleryPanel } from "./ui/GalleryPanel";
 import { DoctrinePanel } from "./ui/DoctrinePanel";
+import { CampaignPanel } from "./ui/CampaignPanel";
 import { OfflineScreen } from "./ui/OfflineScreen";
 import { ViewportControls } from "./ui/ViewportControls";
 
@@ -40,6 +41,7 @@ async function boot(): Promise<void> {
   let runMenu: RunMenu;
   let gallery: GalleryPanel | undefined;
   let doctrine: DoctrinePanel | undefined;
+  let campaign: CampaignPanel | undefined;
   let syncBoard: () => void;
 
   const game: GameController = new GameController(app, {
@@ -67,6 +69,7 @@ async function boot(): Promise<void> {
       // commit it to.
       gallery?.render();
       doctrine?.render();
+      campaign?.render();
     },
     onLevelReady: (world) => {
       gameScreen.setLevelLabel(`Image · ${world.paletteSize} couleurs`);
@@ -92,7 +95,11 @@ async function boot(): Promise<void> {
     },
   });
 
-  importScreen = new ImportScreen((file, options) => void game.importImage(file, options));
+  importScreen = new ImportScreen((file, options) => {
+    // Un fichier déposé à la main n'est pas une toile de campagne.
+    game.beginCampaign(null);
+    void game.importImage(file, options);
+  });
   gameScreen = new GameScreen(game);
   offlineScreen = new OfflineScreen(() => {});
 
@@ -104,6 +111,7 @@ async function boot(): Promise<void> {
       // galerie, la doctrine, les éclats et l'offre de reprendre une partie.
       gallery?.render();
       doctrine?.render();
+      campaign?.render();
       importScreen.setShards(0);
       importScreen.setResumable(false);
       gameScreen.upgrades.hide();
@@ -112,6 +120,7 @@ async function boot(): Promise<void> {
 
   gallery = new GalleryPanel(game);
   doctrine = new DoctrinePanel(game);
+  campaign = new CampaignPanel(game, () => importScreen.beginAnalysis());
 
   importScreen.onStart(() => game.startPreparedLevel());
   importScreen.onResume(() => game.resume());

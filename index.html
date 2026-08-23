@@ -31,6 +31,20 @@
           couleur devient une cible, un compteur et une carte.
         </p>
 
+        <!--
+          Avant la zone de dépôt, et c'est délibéré : la campagne est le chemin
+          par défaut, déposer un fichier est le chemin de côté. Sous les réglages,
+          elle demandait de faire défiler pour être trouvée — et c'est très
+          exactement le reproche qui lui a été fait.
+        -->
+        <section id="campaign" class="campaign">
+          <div class="campaign-head">
+            <div class="eyebrow">Campagne</div>
+            <div id="campaign-progress" class="campaign-progress">0 / 56</div>
+          </div>
+          <div id="campaign-list" class="campaign-list"></div>
+        </section>
+
         <label id="dropzone" class="dropzone">
           <input id="file-input" type="file" accept="image/png,image/jpeg,image/webp" />
           <div class="previews">
