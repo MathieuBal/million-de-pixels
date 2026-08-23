@@ -167,6 +167,9 @@ export class RunMenu {
       ["Palette", `×${reward.paletteFactor.toFixed(2)}`],
       ["Couleurs rares", `×${reward.rarityFactor.toFixed(2)}`],
       ["Passage", `×${reward.passFactor.toFixed(2)}`],
+      // The only line that goes up on its own, so it is the one worth reading:
+      // every toile already finished pays on this one.
+      ["Métier", `×${reward.craftFactor.toFixed(2)}`],
     ];
     if (reward.multiplier !== 1) lines.push(["Prospecteur", `×${reward.multiplier.toFixed(2)}`]);
 

@@ -1,4 +1,5 @@
-import type { CannonLoad, CannonLoadGenerator } from "./CannonLoad";
+import type { CannonLoad } from "./CannonLoad";
+import type { CannonLoadGenerator } from "./CannonLoad";
 import type { ColorAmmoReserve } from "./ColorAmmoReserve";
 
 /**
@@ -57,6 +58,11 @@ export class CannonQueue {
     return this.slots.filter((load): load is CannonLoad => load !== null);
   }
 
+  /** Passes the reachable palette on to the draw. Null draws blind. */
+  setReachable(reachable: readonly boolean[] | null): void {
+    this.generator.setReachable(reachable);
+  }
+
   /** Fills empty slots in place. Stops early when no colour can supply one. */
   refill(): void {
     while (this.slots.length < this.size) this.slots.push(null);
@@ -104,6 +110,70 @@ export class CannonQueue {
 
     if (dropped.length > 0) this.refill();
     return dropped;
+  }
+
+  /**
+   * Re-cuts the one offer that has gone most out of date, and gives its rounds
+   * back. Returns it, or null when the étal is current.
+   *
+   * The end of a toile used to freeze the étal, and it took two mistakes to do
+   * it. A load is cut when the board is large and keeps the stock it was cut
+   * with; the board then shrinks under it. So the rounds promised to the queue
+   * converge on the rounds that exist — measured at ninety percent cleared with
+   * the étal upgraded to a hundred slots, a hundred thousand rounds committed
+   * against a hundred and two thousand living pixels — and `next()` has nothing
+   * left to draw with. The offer stops changing, and if the colours it froze on
+   * happen to be buried behind others, the toile cannot be finished at all.
+   *
+   * `ColorAmmoReserve.QUEUE_SHARE` stops the first half of that, but on its own
+   * it makes the second half worse: the colours a cannon *can* reach are the
+   * ones the queue offers most, so they are the first to fill their share with
+   * old fat loads — and then they are the ones that can no longer be drawn,
+   * while the buried colours still can. Measured after that change alone: the
+   * three reachable colours held seventy-eight of ninety-nine slots and were
+   * launched exactly zero times in ten minutes.
+   *
+   * So staleness is what gets re-cut, and it is two things at once: a colour
+   * nothing exposes, and a stock far larger than the same load would be given
+   * today. The worst offender goes first.
+   *
+   * One per call, which the simulator makes about once a second. That is what
+   * keeps this from being the tile-shuffling bug again: the slot a player is
+   * aiming at is almost never the single worst one, and a tap that does land on
+   * a re-cut slot resolves to nothing rather than to the wrong colour, because
+   * `take()` matches on the load's id.
+   */
+  recycleStale(reachable: readonly boolean[]): CannonLoad | null {
+    let worst = -1;
+    let worstScore = 0;
+
+    for (let i = 0; i < this.slots.length; i++) {
+      const load = this.slots[i];
+      if (!load) continue;
+
+      const ideal = this.idealAmmo(load.colorId);
+      // How many times over its current worth this load is, and whether its
+      // colour is shootable at all. Being unreachable outweighs any excess:
+      // rounds promised to a buried colour do nothing whatever their number.
+      const excess = load.ammo / Math.max(1, ideal);
+      const score = (reachable[load.colorId] === false ? 100 : 0) + (excess >= 2 ? excess : 0);
+      if (score > worstScore) {
+        worstScore = score;
+        worst = i;
+      }
+    }
+
+    if (worst < 0) return null;
+
+    const load = this.slots[worst]!;
+    this.reserve.releaseFromQueue(load.colorId, load.ammo);
+    this.slots[worst] = this.generator.next();
+    return load;
+  }
+
+  /** What a load of this colour would be cut with right now. */
+  private idealAmmo(colorId: number): number {
+    return Math.max(1, Math.min(this.generator.loadSizeFor(colorId), this.reserve.alive(colorId)));
   }
 
   /**

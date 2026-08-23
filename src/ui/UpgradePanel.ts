@@ -3,6 +3,7 @@ import {
   FAMILY_LABELS,
   FAMILY_ORDER,
   UPGRADES,
+  UPGRADE_BY_ID,
   type UpgradeDefinition,
   type UpgradeFamily,
 } from "../progression/Upgrades";
@@ -15,7 +16,15 @@ import {
   type MetaUpgradeDefinition,
   type MetaUpgradeId,
 } from "../progression/MetaProgression";
-import { HEX_BONUS, LIBRARY_HEXES, LIBRARY_SIZE } from "../progression/ColorLibrary";
+import {
+  HEX_BONUS,
+  LIBRARY_SIZE,
+  PLANE_BONUS,
+  PLANE_COUNT,
+  PLANE_SIZE,
+  hexesOfPlane,
+  planeLabel,
+} from "../progression/ColorLibrary";
 import { formatCount } from "./format";
 
 /** Axes shown as shortcuts in the bottom row — all four of them. */
@@ -51,6 +60,8 @@ export class UpgradePanel {
 
   private boosterSignature = "";
   private tab: "level" | "permanent" | "library" = "level";
+  /** Which page of the colour book is open. Null until the panel picks one. */
+  private libraryPlane: number | null = null;
   /** Which family of the shop, or which branch of the tree, is on screen. */
   private family: UpgradeFamily = "rail";
   private branch: MetaBranch = "racine";
@@ -261,43 +272,62 @@ export class UpgradePanel {
   private levelRow(definition: UpgradeDefinition): HTMLElement {
     const upgrades = this.game.getUpgrades();
     const level = upgrades.levelOf(definition.id);
+    const missing = upgrades.missingFor(definition.id);
+    const locked = missing.length > 0;
     const price = upgrades.priceOf(definition.id);
-    const maxed = price === null;
+    const maxed = !locked && price === null;
 
     const row = document.createElement("div");
     row.className = "upgrade-row";
-    row.dataset.state = maxed ? "max" : upgrades.canAfford(definition.id) ? "buy" : "poor";
+    row.dataset.state = locked
+      ? "locked"
+      : maxed
+        ? "max"
+        : upgrades.canAfford(definition.id)
+          ? "buy"
+          : "poor";
 
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.textContent = definition.glyph;
 
-    const quote = maxed ? { levels: 0, price: 0 } : this.quote(definition.id);
+    const quote = maxed || locked ? { levels: 0, price: 0 } : this.quote(definition.id);
     const shown = Math.max(1, quote.levels);
     const current = definition.format(definition.valueAt(level));
-    const next = maxed ? "" : ` → ${definition.format(definition.valueAt(level + shown))}`;
+    const next = maxed || locked ? "" : ` → ${definition.format(definition.valueAt(level + shown))}`;
+
+    // A locked axis says what door it is behind rather than a value it cannot
+    // have: "here is the next thing to want" is the reason it is listed at all.
+    const doors = missing
+      .map((id) => UPGRADE_BY_ID.get(id)?.label ?? id)
+      .join(", ");
 
     const text = document.createElement("span");
     text.className = "text";
     text.innerHTML =
-      `<span class="name">${definition.label} · niv. ${level}</span>` +
-      `<span class="meta">${current}${next}</span>` +
+      `<span class="name">${definition.label}${locked ? "" : ` · niv. ${level}`}</span>` +
+      `<span class="meta">${locked ? `demande ${doors}` : `${current}${next}`}</span>` +
       `<span class="what">${definition.description}</span>` +
-      `<span class="track"><i style="width:${((level / definition.maxLevel) * 100).toFixed(1)}%"></i></span>`;
+      `<span class="track"><i style="width:${locked ? 0 : ((level / definition.maxLevel) * 100).toFixed(1)}%"></i></span>`;
 
     const batched = quote.levels > 1;
     const button = document.createElement("button");
     button.className = "price";
     button.type = "button";
-    button.disabled = maxed || quote.levels === 0;
-    button.innerHTML = maxed
-      ? "max"
-      : quote.levels === 0
-        ? `${formatCount(price)} ◈`
-        : `${formatCount(quote.price)} ◈${batched ? `<small>×${quote.levels}</small>` : ""}`;
-    button.title = maxed
-      ? `${definition.label} — niveau maximum atteint`
-      : definition.description;
+    button.disabled = locked || maxed || quote.levels === 0;
+    button.innerHTML = locked
+      ? "verrouillé"
+      : maxed
+        ? "max"
+        : quote.levels === 0
+          ? // Never null here: locked and maxed are both handled above.
+            `${formatCount(price ?? 0)} ◈`
+          : `${formatCount(quote.price)} ◈${batched ? `<small>×${quote.levels}</small>` : ""}`;
+    button.title = locked
+      ? `${definition.label} — demande ${doors}`
+      : maxed
+        ? `${definition.label} — niveau maximum atteint`
+        : definition.description;
     button.addEventListener("click", () => {
       if (this.game.buyUpgrade(definition.id, Math.max(1, quote.levels))) this.renderPanel();
     });
@@ -343,33 +373,76 @@ export class UpgradePanel {
   }
 
   /**
-   * The colour book: two hundred and sixteen hexes, and how many are yours.
+   * The colour book: four thousand and ninety-six hexes, read one page at a
+   * time.
    *
    * A grid rather than a list, because the shape of what is missing is the
-   * information — a hole in the reds says "go find a warm image" far better
-   * than a number would. Each hex is catalogued by clearing a colour that snaps
-   * to it, and pays passively for the rest of the profile's life: work already
-   * finished, rewarded quietly, never the reason to play.
+   * information — a hole in the warm greens says "go find another picture" far
+   * better than a number would. The whole cube at once would be four thousand
+   * swatches on a phone and a wall of noise besides, so it is shown as sixteen
+   * planes of two hundred and fifty-six: one red level per page, green down and
+   * blue across. A page is small enough to finish, which is where the collecting
+   * actually happens — the per-hex trickle is deliberately too small to feel one
+   * at a time.
+   *
+   * Each hex is catalogued by clearing a colour that snaps to it, and pays
+   * passively for the rest of the profile's life: work already finished,
+   * rewarded quietly, never the reason to play.
    */
   private renderLibrary(): void {
     const library = this.game.getMeta().library;
     const bonus = library.bonus();
+    // First look lands where there is something to see, not on plane zero.
+    this.libraryPlane ??= library.fullestPlane;
+    const openPlane = this.libraryPlane;
 
     const head = document.createElement("div");
     head.className = "upgrade-family";
-    head.textContent = `${library.discovered} / ${LIBRARY_SIZE} teintes`;
+    head.textContent = `${library.discovered} / ${LIBRARY_SIZE} teintes · ${library.completePlanes} / ${PLANE_COUNT} planches`;
     this.rows.appendChild(head);
 
     const note = document.createElement("p");
     note.className = "tree-note";
     note.textContent =
       `+${((bonus.fragmentMultiplier - 1) * 100).toFixed(1)} % de fragments et de production ` +
-      `hors-ligne · ${(HEX_BONUS * 100).toFixed(2)} % par teinte`;
+      `hors-ligne · ${(HEX_BONUS * 100).toFixed(2)} % par teinte, ` +
+      `${(PLANE_BONUS * 100).toFixed(0)} % par planche complète`;
     this.rows.appendChild(note);
+
+    // The pages, with their own progress on them: which one to open next is the
+    // only decision this screen offers, so it has to be answerable at a glance.
+    const pages = document.createElement("div");
+    pages.className = "hex-pages";
+    for (let plane = 0; plane < PLANE_COUNT; plane++) {
+      const { found } = library.planeProgress(plane);
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "hex-page";
+      tab.dataset.active = String(plane === openPlane);
+      // The bar is the plane's own red, warmed just enough that the darkest
+      // page still shows a bar rather than a gap in the strip.
+      const red = plane * 17;
+      tab.style.setProperty("--page-tint", `rgb(${Math.max(28, red)}, ${red * 0.16}, ${red * 0.16})`);
+      tab.textContent = planeLabel(plane);
+      tab.title = `${planeLabel(plane)} — ${found} / ${PLANE_SIZE}`;
+      tab.setAttribute("aria-label", `Planche ${planeLabel(plane)}, ${found} sur ${PLANE_SIZE}`);
+      tab.addEventListener("click", () => {
+        this.libraryPlane = plane;
+        this.renderPanel();
+      });
+      pages.appendChild(tab);
+    }
+    this.rows.appendChild(pages);
+
+    const { found } = library.planeProgress(openPlane);
+    const pageHead = document.createElement("p");
+    pageHead.className = "tree-note";
+    pageHead.textContent = `Planche ${planeLabel(openPlane)} — ${found} / ${PLANE_SIZE}`;
+    this.rows.appendChild(pageHead);
 
     const grid = document.createElement("div");
     grid.className = "hex-grid";
-    for (const hex of LIBRARY_HEXES) {
+    for (const hex of hexesOfPlane(openPlane)) {
       const specimen = library.specimen(hex);
       const cell = document.createElement("div");
       cell.className = "hex-cell";

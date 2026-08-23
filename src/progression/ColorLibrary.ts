@@ -1,11 +1,22 @@
 /**
  * The colour library: a grid of hexes, and what the profile has finished off.
  *
- * Each channel is snapped to one of six levels, which gives the 216 hexes of
- * the old web-safe palette — `#000000`, `#003366`, `#FF6699` and so on. That
- * number is the point: a collection needs a denominator. Exact values would
- * give thousands of near-identical entries and a book with no last page, which
- * is the opposite of what a collection is for.
+ * Each channel snaps to one of sixteen levels — `0x00`, `0x11`, … `0xFF` — so a
+ * hex here is exactly a three-digit CSS shorthand written out: `#000000`,
+ * `#1166FF`, `#FFEE33`. That gives **4 096** of them, and the size is the whole
+ * point. A book a dozen images could fill is a checklist; a book this size is a
+ * reason to go looking for a picture with colours in it you have never cleared.
+ * A single toile carries eight to sixteen colours, so it moves the counter by a
+ * few tenths of a percent — it can chip at the grid, never validate it.
+ *
+ * The cube is read as **sixteen planes**, one per red level, each a 16 × 16
+ * square of green against blue. That is what keeps four thousand swatches from
+ * being a wall of noise: a plane is a page, small enough to finish, and a hole
+ * in it says "go find a warmer image" the way a number never would.
+ *
+ * The six levels of the old web-safe grid are all multiples of `0x11`, so every
+ * hex catalogued before this widening is still a hex here. Nothing is lost and
+ * no save needs migrating — the same book simply has more pages.
  *
  * A hex is catalogued when a colour that snaps to it is **cleared outright** —
  * the one moment in a run that is unarguably finished: the card leaves the
@@ -14,10 +25,16 @@
  * grid in the first thirty seconds of the first toile.
  */
 
-/** The six levels each channel snaps to. */
-export const HEX_LEVELS = [0x00, 0x33, 0x66, 0x99, 0xcc, 0xff];
+/** The sixteen levels each channel snaps to: every multiple of 0x11. */
+export const HEX_LEVELS = Array.from({ length: 16 }, (_, i) => i * 0x11);
 
 export const LIBRARY_SIZE = HEX_LEVELS.length ** 3;
+
+/** Hexes on one plane of the cube: a page of the book. */
+export const PLANE_SIZE = HEX_LEVELS.length ** 2;
+
+/** Planes of the cube, one per red level. */
+export const PLANE_COUNT = HEX_LEVELS.length;
 
 /**
  * What one catalogued hex is worth, and why it is worth anything.
@@ -25,9 +42,23 @@ export const LIBRARY_SIZE = HEX_LEVELS.length ** 3;
  * The library is a record of work already finished, so paying it out as combat
  * power would make it a second upgrade tree with none of the choices. It pays
  * passively instead: what the image is worth, and what an absence produces.
- * A full grid is +32 % on both — real, and never the reason to play.
+ *
+ * A twentieth of a percent each. Fifty images of ordinary play catalogue a few
+ * hundred hexes, which is around +15 % — worth having, never worth chasing. The
+ * full cube would be +205 %, and nobody is going to see it; a collection needs
+ * a last page more than it needs a reachable one.
  */
-export const HEX_BONUS = 0.0015;
+export const HEX_BONUS = 0.0005;
+
+/**
+ * What finishing a whole plane pays on top.
+ *
+ * Sixteen pages, two percent each. The per-hex trickle is deliberately too
+ * small to feel one at a time, so the plane is where the collecting actually
+ * lands: two hundred and fifty-six related shades, a page that visibly fills,
+ * and a number at the end of it.
+ */
+export const PLANE_BONUS = 0.02;
 
 export interface LibraryBonus {
   fragmentMultiplier: number;
@@ -71,9 +102,9 @@ export function hexOf(r: number, g: number, b: number): string {
 /**
  * Every hex of the grid, in reading order.
  *
- * Rows walk red then green, columns walk blue, so the grid reads as six blocks
- * of six rows — related colours sit together and a gap is visible as a gap
- * rather than lost in noise.
+ * Rows walk red then green, columns walk blue, so the cube reads as sixteen
+ * blocks of sixteen rows — related colours sit together and a gap is visible as
+ * a gap rather than lost in noise.
  */
 export const LIBRARY_HEXES: string[] = (() => {
   const out: string[] = [];
@@ -84,6 +115,22 @@ export const LIBRARY_HEXES: string[] = (() => {
   }
   return out;
 })();
+
+/** The 256 hexes of one plane, in reading order: green down, blue across. */
+export function hexesOfPlane(plane: number): string[] {
+  const red = HEX_LEVELS[Math.max(0, Math.min(PLANE_COUNT - 1, plane))];
+  const out: string[] = [];
+  for (const g of HEX_LEVELS) {
+    for (const b of HEX_LEVELS) out.push(hexOf(red, g, b));
+  }
+  return out;
+}
+
+/** How a plane is named to the player: its red level, in hex. */
+export function planeLabel(plane: number): string {
+  const red = HEX_LEVELS[Math.max(0, Math.min(PLANE_COUNT - 1, plane))];
+  return `R ${red.toString(16).padStart(2, "0").toUpperCase()}`;
+}
 
 export class ColorLibrary {
   private readonly found: Map<string, Specimen>;
@@ -109,8 +156,45 @@ export class ColorLibrary {
   }
 
   /** What the grid pays, passively, for what it already holds. */
+  /** Hexes catalogued on one plane of the cube, and how many it holds. */
+  planeProgress(plane: number): { found: number; total: number } {
+    let found = 0;
+    for (const hex of hexesOfPlane(plane)) if (this.found.has(hex)) found++;
+    return { found, total: PLANE_SIZE };
+  }
+
+  /**
+   * The page worth opening: the one holding the most catalogued hexes.
+   *
+   * Opening on plane zero every time meant that a player who had just finished
+   * a toile opened the book on an empty page, because the image's colours
+   * happened to live on other red levels. The grid's job is to show what the
+   * profile has; it should not have to be searched for first.
+   */
+  get fullestPlane(): number {
+    let best = 0;
+    let bestFound = -1;
+    for (let plane = 0; plane < PLANE_COUNT; plane++) {
+      const { found } = this.planeProgress(plane);
+      if (found > bestFound) {
+        bestFound = found;
+        best = plane;
+      }
+    }
+    return best;
+  }
+
+  /** Planes with every hex catalogued. */
+  get completePlanes(): number {
+    let complete = 0;
+    for (let plane = 0; plane < PLANE_COUNT; plane++) {
+      if (this.planeProgress(plane).found === PLANE_SIZE) complete++;
+    }
+    return complete;
+  }
+
   bonus(): LibraryBonus {
-    const gain = 1 + this.found.size * HEX_BONUS;
+    const gain = 1 + this.found.size * HEX_BONUS + this.completePlanes * PLANE_BONUS;
     return { fragmentMultiplier: gain, offlineMultiplier: gain };
   }
 

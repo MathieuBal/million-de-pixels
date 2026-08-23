@@ -128,6 +128,39 @@ une seule ligne ou une seule colonne. Le parcours se réduit alors à un balayag
 pas fixe — l'index de cellule avance d'une constante (±1 sur une ligne, ±1024 sur
 une colonne), sans flottant ni terme incrémental dans la boucle.
 
+**L'étal ne peut pas se figer.** Une case est découpée quand le plateau est
+grand et garde le stock avec lequel elle l'a été ; le plateau rétrécit ensuite
+sous elle. Sans garde-fou, les billes promises à l'étal convergent vers les
+billes qui existent — mesuré à 90 % de toile nettoyée, étal amélioré à cent
+cases : **100 910 billes engagées contre 102 049 pixels vivants**. Le générateur
+ne peut alors plus rien tirer, l'offre cesse de tourner, et si les couleurs sur
+lesquelles elle s'est figée sont enterrées derrière d'autres, la toile ne peut
+plus être finie du tout — quatre-vingt-dix minutes sans une seule cellule
+détruite, avec un million de pixels de munitions dans les cases.
+
+Trois pièces le rendent impossible :
+
+- **`QUEUE_SHARE = 0,5`** — l'étal ne peut jamais se voir promettre plus de la
+  moitié d'une couleur vivante. Un canon déjà sur le rail n'est pas concerné : il
+  dépense ses billes, il ne les stocke pas.
+- **Le tirage connaît l'accessibilité.** Une couleur que rien n'expose garde un
+  dixième de sa part — pas zéro, parce qu'elle est à une cellule près d'être
+  tirable et qu'une file qui l'aurait oubliée mettrait plusieurs tirages à s'en
+  apercevoir.
+- **Une case périmée est redécoupée**, une par seconde : celle dont la couleur
+  est enterrée, sinon celle dont le stock dépasse le plus ce qu'on lui donnerait
+  aujourd'hui. Une par appel, parce que déplacer une case sous le doigt du joueur
+  est le bug qu'on venait de corriger.
+
+Et **l'Automate ne prend plus la première case**. Tard dans une toile certaines
+couleurs sont enterrées ; un canon lancé sur l'une d'elles fait un tour complet,
+ne détruit rien et revient. Un automate qui prenait toujours la case 1 envoyait
+donc tous ses canons dans le même mur : sur une toile qu'un joueur qui tape au
+hasard finit en 22 minutes, il en était encore à 86 % après trois heures, ayant
+lancé les trois couleurs tirables exactement zéro fois dans les dix dernières
+minutes. Il choisit une couleur que quelque chose expose, et ne retombe sur la
+première case que si rien ne l'est. Après correction : **54 minutes**.
+
 **Le rail est l'horloge.** Chaque voie franchie est une occasion de traitement :
 le travail d'un canon vaut exactement la distance qu'il a parcourue. Il n'y a plus
 de cadence. Une cadence fixe plafonnait la production à `1000 / intervalle` quelle
@@ -341,8 +374,9 @@ suffirait de recommencer pour mettre un build en banque.
 
 ### Ce que vaut une toile
 
-Quatre choses rendent une image difficile, et chacune est une ligne lisible sur
-le panneau de fin plutôt qu'un nombre à croire sur parole :
+Quatre choses rendent une image difficile, et une cinquième dit ce que le profil
+y apporte. Chacune est une ligne lisible sur le panneau de fin plutôt qu'un
+nombre à croire sur parole :
 
 | Ligne | Ce qu'elle mesure |
 |---|---|
@@ -350,25 +384,61 @@ le panneau de fin plutôt qu'un nombre à croire sur parole :
 | Palette | `1 + (couleurs − 6) × 0,10` — chaque couleur est une file, un canon et un goulot de plus |
 | Couleurs rares | `1 + rares × 0,15` — celles qui se cachent derrière la façade d'une autre |
 | Passage | `1 + (passage − 1) × 0,25` — revenir sur une image connue rapporte moins, jamais rien |
+| **Métier** | `1 + toiles_finies × 0,04` — la seule ligne qui monte toute seule |
+
+**Métier est la ligne qui a manqué le plus longtemps.** Sans elle le revenu était
+plat : 25 éclats à la toile 1, 25 à la toile 10, mesuré. En face, l'arbre demande
+des milliers d'éclats pour un multiplicateur — Mémoire, le seul nœud qui
+raccourcisse la toile *suivante*, en voulait 6 525, soit 261 toiles, soit deux
+cent cinquante heures. Chaque axe qui compose était à deux ordres de grandeur du
+revenu, et un jeu d'attente ne marche que si sa courbe accélère. Métier compte
+les toiles finies, pas les pixels ni les couleurs : c'est ce que le joueur a
+fait. Elle exclut la toile en cours — le prix est ce que le profil a apporté à
+l'image, pas ce qu'il vaudra une fois qu'elle est finie.
 
 La ligne « couleurs rares » est ce qui donne enfin une valeur mécanique à la
 préservation des micro-couleurs : une couleur descendue à une fraction de pour
 cent est exactement celle qui bloque une partie derrière une autre, et c'est
 précisément ce que la détection de palette a été construite pour garder.
 
-Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs rares :
-`12 × 1,20 × 1,75 = 25 éclats`.
+Mesuré sur le poster de test — 8 couleurs, 589 824 px jouables, 5 couleurs rares,
+première toile d'un profil neuf : `12 × 1,20 × 1,75 × 1,00 = 25 éclats`. Le même
+poster à la dixième toile : `× 1,40 = 35`, à la quarantième : `× 2,60 = 65`.
+
+Le pas de l'arbre suit la même correction. `TICK` valait un cinquième de pour
+cent par point ; un prix linéaire pour un effet linéaire rend le coût d'un
+*doublement* quadratique, donc ×1,5 sur la vitesse du rail demandait 250 points
+et 3 725 éclats. À deux cinquièmes de pour cent il faut moitié moins de points et
+donc le quart du prix : 1 082 éclats, 29 toiles — à côté des 29 toiles que
+coûtent les huit déblocages. Le pas de prix de Mémoire, le plus raide de l'arbre
+sur le nœud qui compte le plus, passe de 0,5 à 0,2. Aucun de ces axes n'a de
+plafond : ce qui a changé, c'est que leur premier vrai multiplicateur tient dans
+la vie d'un profil.
 
 Ils sont rangés dans le magasin de réglages, pas dans une sauvegarde de niveau,
 parce que c'est exactement ce qu'ils sont : de l'état de profil.
 
 ### Le nuancier
 
-Deux cent seize teintes — chaque canal ramené à l'un de six niveaux, ce qui donne
-les hexadécimaux `#000000`, `#003366`, `#FF6699`… Ce nombre *est* l'intérêt : une
-collection a besoin d'un dénominateur. Des valeurs exactes donneraient des
-milliers d'entrées presque identiques et un livre sans dernière page, ce qui est
-l'inverse de ce à quoi sert une collection.
+**Quatre mille quatre-vingt-seize teintes** — chaque canal ramené à l'un de seize
+niveaux (`0x00`, `0x11`, … `0xFF`), donc une teinte d'ici est exactement une
+notation CSS à trois chiffres écrite en toutes lettres : `#000000`, `#1166FF`,
+`#FFEE33`. La taille *est* l'intérêt : un livre qu'une douzaine d'images
+remplirait est une liste de courses ; un livre de cette taille est une raison
+d'aller chercher une image dont on n'a jamais épuisé les couleurs. Une toile
+porte huit à seize couleurs, donc elle déplace le compteur de quelques dixièmes
+de pour cent — elle grignote la grille, elle ne la valide jamais.
+
+Le cube se lit en **seize planches**, une par niveau de rouge, chacune un carré
+de 16 × 16 en vert contre bleu. C'est ce qui empêche quatre mille pastilles
+d'être un mur de bruit : une planche est une page, assez petite pour être finie,
+et un trou dedans dit « va chercher une image plus chaude » comme aucun nombre ne
+le ferait.
+
+Les six niveaux de l'ancienne grille web-safe sont tous des multiples de `0x11`,
+donc toute teinte cataloguée avant cet élargissement en est encore une. Rien
+n'est perdu, aucune sauvegarde n'a besoin de migration — le même livre a
+simplement plus de pages.
 
 Une teinte est cataloguée quand une couleur qui s'y rattache est **épuisée
 entièrement** — le seul moment d'une partie qui soit indiscutablement fini : la
@@ -376,31 +446,63 @@ case quitte l'étal, un goulot se résout, le compteur touche zéro et y reste.
 Cataloguer chaque couleur dont un pixel a été pris remplirait la grille dans les
 trente premières secondes de la première toile.
 
-Chaque teinte paie **+0,15 % de fragments et de production hors-ligne**, à vie.
-La bibliothèque est un relevé de travail déjà fait : la payer en puissance de
-combat en ferait un deuxième arbre d'améliorations sans aucun de ses choix. Une
-grille pleine vaut +32 % sur les deux — réel, et jamais la raison de jouer.
+Chaque teinte paie **+0,05 % de fragments et de production hors-ligne**, à vie,
+et chaque **planche terminée +2 %**. La bibliothèque est un relevé de travail
+déjà fait : la payer en puissance de combat en ferait un deuxième arbre
+d'améliorations sans aucun de ses choix. Cinquante images de jeu ordinaire
+cataloguent quelques centaines de teintes, soit environ +15 % — à prendre, jamais
+à courir après. Le cube plein vaudrait +205 %, et personne ne le verra : une
+collection a plus besoin d'une dernière page que d'une page atteignable. Le
+compte par teinte est volontairement trop petit pour se sentir une par une —
+c'est la planche qui porte la collection, deux cent cinquante-six nuances
+voisines et un nombre au bout.
 
-La grille se lit en douze colonnes : les six niveaux de bleu d'un même couple
-rouge-vert tiennent sur une ligne et demie, donc les couleurs voisines restent
-ensemble et un trou dans les rouges se voit comme un trou. La pastille montre le
-**spécimen tel qu'il était sur le plateau**, pas la valeur de grille sous
-laquelle il a été classé.
+Une planche se lit en seize colonnes, le carré qu'elle est : une ligne par niveau
+de vert, le bleu qui court dessus, et un trou se voit comme un trou. La pastille
+montre le **spécimen tel qu'il était sur le plateau**, pas la valeur de grille
+sous laquelle il a été classé.
 
-### Le confort se gagne
+### Ce qui s'achète où
 
-| Nœud | Prix | Ce qu'il retire de pénible |
-|---|---:|---|
-| Nuancier | 40 ◆ | la palette entière, avec les couleurs encore atteignables mises en évidence |
-| Trieuse | 70 ◆ | filtrer les cases proposées sur une seule couleur |
-| Automate | 110 ◆ | les cases partent toutes seules dès qu'un emplacement se libère |
-| Emplette | 200 ◆ | achète l'amélioration la moins chère dès qu'elle est payable |
+La ligne de partage : **ce qui agit à l'intérieur d'une partie s'achète en
+fragments, dans la boutique de la toile, et se rejoue à chaque image. Ce qui la
+précède, la finance ou lui survit reste en éclats, dans l'arbre permanent.**
 
-Aucun n'est donné : ils ne veulent dire quelque chose que pour quelqu'un qui a
-déjà fini une toile et sait ce qui est pénible dans la suivante — chercher la
-couleur goulot parmi huit offres au hasard, cliquer la même case des centaines de
-fois, rouvrir la boutique toutes les trente secondes. Tant qu'ils ne sont pas
-achetés, la rangée n'existe pas et une première passe garde sa forme.
+| Boutique de toile (fragments ◈) | Arbre permanent (éclats ◆) |
+|---|---|
+| Rail, Cases — vitesse, canons, chargeur, étal | Économie — Négoce, Élan, Prospecteur |
+| Économie de partie — Alliage, Veille | Départ — Fondation, Atelier, Héritage, Socle, Mémoire |
+| **Automatisme** — Automate, Cadence, Emplette | Hors-ligne — Somnambule |
+| **Capacités** — Perce, Explosion, Foudre, Feu et leurs réglages | Confort — Nuancier, Trieuse |
+
+**Pourquoi les capacités et l'automate ont changé de côté.** Ils étaient des
+nœuds permanents, et le relevé a montré ce que ça produisait : l'Automate tombait
+à la sixième toile après **7,4 heures de jeu**, et la toile suivante passait de
+57,8 minutes à **6,8**. Toute la difficulté du jeu tenait dans un seul achat —
+avant lui, un jeu d'attente qui n'attend pas, où il faut taper une case par
+seconde pendant une heure ; après lui, plus rien à décider. Une capacité qu'un
+profil possède pour de bon a cessé d'être une décision.
+
+Achetées dans la toile, elles se rejouent : chaque image recommence à la main et
+s'automatise à mesure qu'elle paie. C'est l'arc que le jeu voulait, et c'est ce
+que « roguelite » veut dire ici.
+
+**L'Automate et son délai.** Débloqué, il envoie une case toutes les **8 s** —
+assez pour qu'un pouce fasse encore mieux, assez peu pour qu'un téléphone posé
+sur la table serve enfin à quelque chose. Chaque niveau de **Cadence** en retire
+15 %, jusqu'à un plancher de 0,25 s : en dessous, « de temps en temps » est
+devenu « à chaque frame » et ce n'est plus un délai.
+
+**Les quatre capacités sont des portes.** Perce 6 000 ◈, Explosion 15 000,
+Foudre 30 000, Feu 60 000 — une échelle qui traverse une toile. Derrière chacune,
+deux réglages : une chance de déclenchement sans plafond utile, et une portée
+(cases traversées, rayon, rebonds, propagation). Un réglage acheté derrière une
+porte fermée reste **inerte** plutôt que de tirer à zéro pour cent, ce qui serait
+la même chose dite moins clairement.
+
+Les nœuds de confort qui restent permanents — Nuancier, Trieuse — ne changent pas
+ce que fait un canon : ils changent ce que le joueur voit et peut filtrer. Les
+racheter à chaque image serait une punition, pas une décision.
 
 **Le nuancier explique le problème central du jeu.** Une couleur peut être
 vivante et inatteignable : enterrée derrière une autre de tous les côtés, elle

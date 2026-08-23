@@ -841,6 +841,10 @@ html, body {
    six branches on a phone will not fit, and a wrapped row moves under a tap. */
 .upgrade-subtabs {
   display: flex;
+  /* A scroll container's automatic minimum size is zero, so inside a flex
+     column it will happily crush itself to its padding. The plane strip in the
+     colour book did exactly that. */
+  flex: 0 0 auto;
   gap: 5px;
   overflow-x: auto;
   overscroll-behavior: contain;
@@ -885,15 +889,56 @@ html, body {
 .tree-note { font-size: 11px; color: var(--muted-3); padding: 8px 2px 0; }
 
 /*
- * The colour book. Twelve columns so the six blue levels of one red-green pair
- * sit on a line and a half — related colours stay together, and a hole in the
- * reds is visible as a hole rather than lost in noise.
+ * The colour book, one page at a time. Sixteen columns so a page is the square
+ * it actually is — one row per green level, blue running across it — and a hole
+ * reads as a hole rather than as noise in a ragged grid.
  */
 .hex-grid {
   display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 3px;
-  padding: 10px 0 4px;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 2px;
+  padding: 8px 0 4px;
+}
+
+/* The sixteen pages. A strip that scrolls rather than wraps: the order is the
+   red axis, and a wrapped strip would break the ramp in half.
+   `flex: 0 0 auto` is not decoration. A scroll container's automatic minimum
+   size is zero, so inside the panel's flex column this strip shrank to its
+   padding — ten pixels — and clipped its own thirty-two-pixel tabs to slivers.
+   Same collapse as the tile row, same cause, same fix. */
+.hex-pages {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  min-height: 42px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 0 2px;
+  scrollbar-width: none;
+}
+.hex-pages::-webkit-scrollbar { display: none; }
+.hex-page {
+  flex: 0 0 auto;
+  min-width: 42px;
+  min-height: 32px;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted-3);
+  background: #101015;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  /* The ramp is carried by a bar under the label, not by the tab's own fill: a
+     page tinted edge to edge puts white text on a near-white ground at the top
+     of the axis. The bar says which red level this page is; the label stays
+     readable on all sixteen. */
+  border-bottom: 3px solid var(--page-tint, #101015);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.hex-page[data-active="true"] {
+  border-color: var(--reach);
+  color: #fff;
 }
 .hex-cell {
   aspect-ratio: 1;

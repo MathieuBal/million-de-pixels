@@ -25,6 +25,22 @@ export const DEFAULT_LOAD_AMMO = 40;
  */
 export const LOAD_WEIGHT_ALPHA = 0.7;
 
+/**
+ * What a colour's share is multiplied by while no lane exposes it.
+ *
+ * Not zero, and that is the whole point: a buried colour is one destroyed cell
+ * away from being shootable again, and a queue that had stopped offering it
+ * would take several draws to notice. It keeps a tenth of its share — enough to
+ * come back on its own, little enough that it stops flooding the étal.
+ *
+ * Without this, the end of a toile went like this: the last colours to be
+ * uncovered hold tens of thousands of pixels each, the queue draws by pixel
+ * count alone, and every slot fills with colours no cannon can touch. Measured
+ * on a stalled run: colours 0 and 3 held 22 000 pixels between them, had zero
+ * exposed lanes, and were the only two the étal would offer.
+ */
+export const UNREACHABLE_WEIGHT = 0.1;
+
 export interface LoadWeight {
   colorId: number;
   weight: number;
@@ -35,6 +51,7 @@ export function loadWeights(
   reserve: ColorAmmoReserve,
   alpha = LOAD_WEIGHT_ALPHA,
   only: number | null = null,
+  reachable: readonly boolean[] | null = null,
 ): LoadWeight[] {
   const all = reserve.availableColors();
   // The Trieuse unlock lets a player commit the queue to one colour. It narrows
@@ -49,7 +66,9 @@ export function loadWeights(
 
   const weights = available.map((colorId) => ({
     colorId,
-    weight: Math.pow(reserve.assignable(colorId) / total, alpha),
+    weight:
+      Math.pow(reserve.assignable(colorId) / total, alpha) *
+      (reachable && reachable[colorId] === false ? UNREACHABLE_WEIGHT : 1),
   }));
 
   let sum = 0;
@@ -77,6 +96,7 @@ export class CannonLoadGenerator {
   ) {}
 
   private preferred: number | null = null;
+  private reachable: readonly boolean[] | null = null;
 
   /** Loads already in the queue keep the stock they were drawn with. */
   setAmmoPerLoad(ammo: number): void {
@@ -92,9 +112,33 @@ export class CannonLoadGenerator {
     return this.preferred;
   }
 
+  /**
+   * Which colours a cannon could actually hit right now. Null draws blind, as
+   * before — the draw still only ever offers colours that have pixels left.
+   */
+  setReachable(reachable: readonly boolean[] | null): void {
+    this.reachable = reachable;
+  }
+
+  /**
+   * The stock a load of this colour would be cut with right now.
+   *
+   * The reserve trims it further; this is what the magazine asks for. The queue
+   * reads it to tell a current offer from one cut two upgrades ago.
+   *
+   * Sizing it against the étal instead — so a hundred slots each held a
+   * hundredth of the board — was measured and dropped: it fills every slot and
+   * keeps the offer turning, but it also takes Chargeur away exactly where the
+   * player has bought it, and a toile that cleared in twenty-nine minutes took
+   * a hundred and seventy-eight.
+   */
+  loadSizeFor(_colorId: number): number {
+    return this.ammoPerLoad;
+  }
+
   /** Returns null when no colour can supply a single round any more. */
   next(): CannonLoad | null {
-    const weights = loadWeights(this.reserve, LOAD_WEIGHT_ALPHA, this.preferred);
+    const weights = loadWeights(this.reserve, LOAD_WEIGHT_ALPHA, this.preferred, this.reachable);
     if (weights.length === 0) return null;
 
     const roll = this.rng.nextFloat();
@@ -109,7 +153,7 @@ export class CannonLoadGenerator {
     }
 
     // A load never promises more rounds than the colour has pixels left.
-    const ammo = this.reserve.reserveForQueue(chosen, this.ammoPerLoad);
+    const ammo = this.reserve.reserveForQueue(chosen, this.loadSizeFor(chosen));
     if (ammo === 0) return null;
 
     return { id: `load-${++this.counter}`, colorId: chosen, ammo };

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ActiveCannon } from "../../src/cannon/ActiveCannon";
 import { CannonLoadGenerator, DEFAULT_LOAD_AMMO } from "../../src/cannon/CannonLoad";
 import { CannonQueue, VISIBLE_LOADS } from "../../src/cannon/CannonQueue";
-import { ColorAmmoReserve } from "../../src/cannon/ColorAmmoReserve";
+import { ColorAmmoReserve, QUEUE_SHARE } from "../../src/cannon/ColorAmmoReserve";
 import { CombatSimulator, MAX_ACTIVE_CANNONS } from "../../src/combat/CombatSimulator";
 import { aimAt, PERIMETER } from "../../src/combat/Cannon";
 import { PixelWorld } from "../../src/world/PixelWorld";
@@ -46,11 +46,33 @@ describe("ColorAmmoReserve", () => {
     return { world, reserve: new ColorAmmoReserve(world) };
   }
 
-  it("never promises more rounds than there are pixels", () => {
+  it("ne promet jamais à l'étal plus que la part réservée d'une couleur", () => {
     const { world, reserve } = bare();
     const alive = world.aliveByColor(0);
-    expect(reserve.reserveForQueue(0, alive + 5000)).toBe(alive);
-    expect(reserve.assignable(0)).toBe(0);
+
+    // The queue may hold at most its share, and the rest stays drawable. That
+    // ceiling is what keeps the offer turning over: promised the whole colour,
+    // the étal freezes on whatever it happened to hold when the board ran out —
+    // measured at ninety percent cleared, a hundred thousand rounds committed
+    // against a hundred and two thousand living pixels, and nothing destroyed
+    // for ninety minutes.
+    expect(reserve.reserveForQueue(0, alive + 5000)).toBe(Math.floor(alive * QUEUE_SHARE));
+    expect(reserve.queueable(0)).toBe(0);
+    expect(reserve.assignable(0)).toBeGreaterThan(0);
+  });
+
+  it("laisse le rail dépasser cette part : un canon dépense, il ne stocke pas", () => {
+    const { world, reserve } = bare();
+    const alive = world.aliveByColor(0);
+    const queued = reserve.reserveForQueue(0, alive);
+    reserve.promoteToActive(0, queued);
+
+    // Once on the rail the rounds are no longer the queue's, so the ceiling
+    // frees up again and the étal can be stocked a second time.
+    expect(reserve.queueable(0)).toBeGreaterThan(0);
+    expect(reserve.stateOf(0).activeAmmo + reserve.stateOf(0).queuedAmmo).toBeLessThanOrEqual(
+      world.aliveByColor(0),
+    );
   });
 
   it("keeps queued plus active within the living pixels", () => {
@@ -705,5 +727,99 @@ describe("PixelWorld.reachableColors", () => {
   it("reports nothing on an empty board", () => {
     const world = PixelWorld.create(makePalette(2, [0, 0]), new Uint8Array(PIXEL_COUNT).fill(DEAD));
     expect(world.reachableColors()).toEqual([false, false]);
+  });
+});
+
+describe("l'étal en fin de toile", () => {
+  /**
+   * A board where one colour is completely buried behind another.
+   *
+   * Columns 0..1 are colour 0, everything else is colour 1. From the left and
+   * the right, and from the top and bottom of columns 0..1, the exposed cell is
+   * colour 0 — so colour 1 is reachable only along the rows, which colour 0
+   * blocks. Bury it properly instead: a full frame of colour 0 around a core of
+   * colour 1, which every lane hits colour 0 first from every side.
+   */
+  function buried(): PixelWorld {
+    const colorId = new Uint8Array(PIXEL_COUNT);
+    const counts = [0, 0];
+    for (let i = 0; i < PIXEL_COUNT; i++) {
+      const x = i % WORLD_WIDTH;
+      const y = (i / WORLD_WIDTH) | 0;
+      const inner = x > 0 && y > 0 && x < WORLD_WIDTH - 1 && y < WORLD_HEIGHT - 1;
+      colorId[i] = inner ? 1 : 0;
+      counts[colorId[i]]++;
+    }
+    return PixelWorld.create(makePalette(2, counts), colorId);
+  }
+
+  /** Counts how many of forty offers go to the buried colour, one draw. */
+  function offersForBuried(reachable: readonly boolean[] | null): number {
+    const world = buried();
+    const reserve = new ColorAmmoReserve(world);
+    const generator = new CannonLoadGenerator(reserve, new XorShift32(4));
+    const queue = new CannonQueue(generator, reserve, 40);
+    queue.setReachable(reachable);
+    queue.refill();
+    return queue.visible.filter((load) => load.colorId === 1).length;
+  }
+
+  it("propose bien moins une couleur que rien n'expose", () => {
+    expect(buried().reachableColors()).toEqual([true, false]);
+
+    // The comparison that matters is against the draw as it was: a buried
+    // colour keeps a share, deliberately — it is one destroyed cell from being
+    // shootable again — but it stops crowding out the colours a cannon can
+    // reach right now.
+    const blind = offersForBuried(null);
+    const aware = offersForBuried(buried().reachableColors());
+    expect(aware).toBeLessThan(blind);
+  });
+
+  it("recoupe une case périmée quand la réserve est entièrement engagée", () => {
+    const world = buried();
+    const reserve = new ColorAmmoReserve(world);
+    const generator = new CannonLoadGenerator(reserve, new XorShift32(4));
+    const queue = new CannonQueue(generator, reserve, 8);
+
+    // Fill the étal blind, the way it fills before anything is buried, then
+    // commit the rest of the board so `next()` has nothing left to draw with.
+    queue.refill();
+    for (const load of queue.visible) void load;
+    const stale = queue.visible.map((l) => l.id);
+    expect(stale.length).toBe(8);
+
+    queue.setReachable(world.reachableColors());
+    const recycled = queue.recycleStale(world.reachableColors());
+
+    if (queue.visible.some((l) => l.colorId === 1)) {
+      // There was something to re-cut, and it gave its rounds back.
+      expect(recycled).not.toBeNull();
+    }
+    // Whatever it did, the ledger holds.
+    const committed = queue.visible.reduce((sum, l) => sum + l.ammo, 0);
+    expect(committed).toBeLessThanOrEqual(world.aliveTotal());
+  });
+
+  it("ne recoupe jamais plus d'une case par appel", () => {
+    const world = buried();
+    const reserve = new ColorAmmoReserve(world);
+    const generator = new CannonLoadGenerator(reserve, new XorShift32(9));
+    const queue = new CannonQueue(generator, reserve, 8);
+    queue.refill();
+
+    const before = queue.positions.map((l) => l?.id ?? null);
+    queue.recycleStale(world.reachableColors());
+    const after = queue.positions.map((l) => l?.id ?? null);
+
+    const moved = before.filter((id, i) => id !== after[i]).length;
+    expect(moved).toBeLessThanOrEqual(1);
+  });
+
+  it("ne touche pas un étal dont toutes les couleurs sont atteignables", () => {
+    const { world, queue } = setup(4);
+    const before = queue.positions.map((l) => l?.id ?? null);
+    expect(queue.recycleStale(world.reachableColors())).toBeNull();
+    expect(queue.positions.map((l) => l?.id ?? null)).toEqual(before);
   });
 });

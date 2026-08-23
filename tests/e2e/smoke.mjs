@@ -162,10 +162,14 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
-  // In game the shop shows one family at a time: two axes on screen, not
-  // twelve. The capabilities and their numbers live in the between-toiles tree.
+  // In game the shop shows one family at a time, so a phone never has to hold
+  // twenty-three axes at once — which is what it now has, since the automaton
+  // and the four capabilities are bought here rather than in the profile.
   check("la boutique montre une famille a la fois", (await page.locator(".upgrade-row").count()) === 3);
-  check("les trois familles sont accessibles", (await page.locator(".sub-tab").count()) === 3);
+  // Five families now: the automaton and the four capabilities are bought here,
+  // with the fragments the image pays out, and re-bought on the next image.
+  const families = await page.locator(".sub-tab").allInnerTexts();
+  check("les cinq familles sont accessibles", families.length === 5, families.join(" · "));
   await page.locator('.sub-tab[data-id="economie"]').click();
   check(
     "changer de famille change les axes",
@@ -174,26 +178,46 @@ try {
   check("chaque axe montre sa progression", (await page.locator(".upgrade-row .track").count()) === 2);
   await page.locator('.sub-tab[data-id="rail"]').click();
 
-  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
-  check("l'arbre s'ouvre par branches", (await page.locator(".sub-tab").count()) === 6);
-  await page.locator('.sub-tab[data-id="explosion"]').click();
-  // A locked node is listed, not hidden: the door says what to want, and the
-  // rows behind it say the door leads somewhere. They keep their name to
-  // themselves until it is opened.
-  check(
-    "la branche montre sa porte et ses reglages",
-    (await page.locator(".upgrade-row").count()) === 3,
-  );
+  // The capabilities are bought inside the toile now, so its shop is where the
+  // doors are. A locked axis is listed, not hidden: the door says what to want,
+  // and the rows behind it say the door leads somewhere.
+  await page.locator('.sub-tab[data-id="capacites"]').click();
+  const capRows = await page.locator(".upgrade-row").count();
+  check("les capacites s'achetent dans la toile", capRows === 12, `${capRows} axes`);
   const locked = page.locator('.upgrade-row[data-state="locked"]');
-  check("les reglages sont verrouilles", (await locked.count()) === 2);
-  check("un reglage verrouille n'a pas de prix", (await locked.first().locator(".price").innerText()) === "—");
+  check("leurs reglages sont verrouilles", (await locked.count()) === 8, `${await locked.count()} verrouilles`);
   check(
-    "il dit ce qui manque",
-    (await locked.first().locator(".meta").innerText()).includes("requis"),
+    "un reglage verrouille ne s'achete pas",
+    await locked.first().locator(".price").isDisabled(),
+  );
+  check(
+    "il dit derriere quelle porte il est",
+    (await locked.first().locator(".meta").innerText()).includes("demande"),
     await locked.first().locator(".meta").innerText(),
   );
-  await page.locator('.sub-tab[data-id="racine"]').click();
+
+  // The automaton too, with the delay it starts at.
+  await page.locator('.sub-tab[data-id="automatisme"]').click();
+  // Match the row's own name, not any text in it: the locked rows below say
+  // "demande Automate", which is exactly the behaviour being checked.
+  const autoNames = await page.locator(".upgrade-row .name").allInnerTexts();
+  check(
+    "l'automate est un achat de la toile",
+    autoNames.some((n) => n.startsWith("Automate")),
+    autoNames.join(" · "),
+  );
+  const cadence = page.locator('.upgrade-row:has(.name:text-is("Cadence"))').first();
+  check(
+    "sa cadence attend qu'il existe",
+    (await cadence.getAttribute("data-state")) === "locked",
+    await cadence.locator(".meta").innerText(),
+  );
+
+  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  const branches = await page.locator(".sub-tab").allInnerTexts();
+  check("l'arbre garde l'economie et le depart", branches.length === 2, branches.join(" · "));
   await page.locator('#upgrade-tabs button[data-tab="level"]').click();
+  await page.locator('.sub-tab[data-id="rail"]').click();
 
   const balanceBefore = digits(await page.locator("#upgrade-balance").innerText());
   check("les pixels detruits financent les achats", balanceBefore > 0, `${balanceBefore} fragments`);
@@ -440,37 +464,61 @@ async function checkClearReward(browser, fixture) {
   const shards = digits(await page.locator("#upgrade-shards").innerText());
   check("les éclats sont au crédit du profil", shards === total, `${shards} au solde`);
 
-  // A branch opens only when its capability is paid for — and then it is there.
-  await page.locator('.sub-tab[data-id="explosion"]').click();
+  // A door opens only when it is paid for — and then what was behind it is
+  // there. The doors live in the toile's own shop now, so that is where this
+  // looks; the profile's tree keeps only what survives an image.
+  await page.locator('#upgrade-tabs button[data-tab="level"]').click();
+  await page.locator('.sub-tab[data-id="capacites"]').click();
   check(
     "la branche est verrouillée avant sa capacité",
-    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 2,
+    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 8,
   );
+  await page.evaluate(() => {
+    const game = window.__game;
+    game.getUpgrades().earn(1_000_000);
+    game.buyUpgrade("explosion");
+  });
+  await page.locator('.sub-tab[data-id="rail"]').click();
+  await page.locator('.sub-tab[data-id="capacites"]').click();
+  check(
+    "elle devient achetable une fois la capacité acquise",
+    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 6 &&
+      (await page.locator('.upgrade-row:has(.name:text-is("Souffle · niv. 0"))').count()) === 1,
+  );
+
+  // The profile keeps the palette unlock, which is not a capability.
   await page.evaluate(() => {
     const meta = window.__game.getMeta();
     meta.recordClear({ playablePixels: 60_000_000, paletteSize: 8, awkwardColors: 5, pass: 1 });
-    meta.buy("explosion");
     meta.buy("nuancier");
   });
-  await page.locator('.sub-tab[data-id="racine"]').click();
-  await page.locator('.sub-tab[data-id="explosion"]').click();
-  check(
-    "elle devient achetable une fois la capacité acquise",
-    (await page.locator('.upgrade-row[data-state="locked"]').count()) === 0 &&
-      (await page.locator('.upgrade-row:has-text("Souffle")').count()) === 1,
-  );
+  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
 
   // The library: a hex is catalogued by clearing a colour that snaps to it, and
   // pays passively from then on.
   await page.locator('#upgrade-tabs button[data-tab="library"]').click();
   await page.waitForTimeout(300);
+  // The cube is read one page at a time, so the visible cells are a plane, not
+  // the whole book: the total to check is the counter's, and what a cleared
+  // toile catalogued is counted there too.
   const cells = await page.locator(".hex-cell").count();
-  const found = await page.locator('.hex-cell[data-found="true"]').count();
-  check("le nuancier a un total", cells === 216, `${cells} teintes`);
+  const pages = await page.locator(".hex-page").count();
+  const head = await page.locator("#upgrade-rows .upgrade-family").first().innerText();
+  const libraryTotal = Number(head.match(/\/\s*(\d+)/)?.[1] ?? 0);
+  const catalogued = Number(head.match(/^\s*(\d+)/)?.[1] ?? 0);
+
+  check("le nuancier a un total", libraryTotal === 4096, `${libraryTotal} teintes`);
+  check("il se lit une planche à la fois", cells === 256 && pages === 16, `${cells} cases, ${pages} planches`);
   check(
     "terminer une toile en catalogue",
-    found > 0 && found <= 8,
-    `${found} teintes sur ${cells}`,
+    catalogued > 0 && catalogued <= 8,
+    `${catalogued} teintes sur ${libraryTotal}`,
+  );
+  // And the page it opens on is one that has something on it — landing on an
+  // empty plane after a clear is the same as showing nothing at all.
+  check(
+    "il s'ouvre sur une planche qui a quelque chose à montrer",
+    (await page.locator('.hex-cell[data-found="true"]').count()) > 0,
   );
   check(
     "il n'y a ni onglet de famille ni lot sur cette page",

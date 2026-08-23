@@ -30,10 +30,14 @@ export class QueueTools {
     const bonus = this.game.permanentBonus();
     if (!world) return;
 
-    this.root.hidden = !bonus.canFilterQueue && !bonus.canAutoLaunch && !bonus.canSeePalette;
+    // The automaton is bought inside the toile now, so the row has to ask the
+    // run rather than the profile whether it exists yet.
+    const canAuto = this.game.canAutoLaunch;
+
+    this.root.hidden = !bonus.canFilterQueue && !canAuto && !bonus.canSeePalette;
     if (this.root.hidden) return;
 
-    this.auto.hidden = !bonus.canAutoLaunch;
+    this.auto.hidden = !canAuto;
     this.auto.dataset.on = String(this.game.isAutoLaunching);
 
     if (!bonus.canFilterQueue) {

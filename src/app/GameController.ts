@@ -134,6 +134,7 @@ export class GameController {
   private saveDirty = false;
   private autoLaunch = false;
   private lastAutoBuyMs = 0;
+  private lastAutoLaunchMs = 0;
   private lastAutosaveMs = 0;
   private detachContextHandler: (() => void) | null = null;
 
@@ -243,16 +244,16 @@ export class GameController {
     return this.generator?.preferredColor ?? null;
   }
 
-  /** Launches every offer as a slot frees, until the player turns it off. */
+  /** Launches an offer on its own interval, until the player turns it off. */
   setAutoLaunch(on: boolean): boolean {
-    if (on && !this.meta.bonus().canAutoLaunch) return false;
+    if (on && !this.canAutoLaunch) return false;
     this.autoLaunch = on;
     return true;
   }
 
-  /** Whether the profile has the node, whatever the toggle says. */
+  /** Whether this toile has bought the automaton, whatever the toggle says. */
   get canAutoLaunch(): boolean {
-    return this.meta.bonus().canAutoLaunch;
+    return this.upgrades.effects(this.meta.bonus()).autoLaunchMs !== null;
   }
 
   get canSeePalette(): boolean {
@@ -280,14 +281,17 @@ export class GameController {
 
     this.combat?.setMaxActiveCannons(effects.maxActiveCannons);
     this.combat?.tuneCannons(effects.moveSpeed);
-    // The capabilities are the profile's, not the image's: a cannon does not
-    // pierce, explode, arc or burn until the talent tree paid for it once.
-    this.combat?.setEffects(bonus.effects);
+    // The capabilities belong to the toile, not to the profile: a run opens its
+    // own doors with the fragments the image pays out, and the next image opens
+    // them again. A capability a profile owned for good stopped being a
+    // decision — and made the toile that first bought it eight times shorter
+    // than every toile before it.
+    this.combat?.setEffects(effects.effects);
     this.combat?.setChances(effects.doubleBiteChance, effects.twinChance);
 
     // The muzzle says what the cannon can do. Only the rarest capability owned
     // is shown: four markings at once would be four illegible ones.
-    const owned = bonus.effects;
+    const owned = effects.effects;
     this.rail?.setCapability(
       owned.fireChance > 0
         ? "feu"
@@ -344,6 +348,9 @@ export class GameController {
       // the slice of the last cleared toile's build that Mémoire carries over.
       const bonus = this.meta.bonus();
       this.upgrades = new UpgradeState({ ...bonus.carriedLevels }, bonus.startingFragments);
+      // The automaton belongs to the toile, so a new toile has none: the toggle
+      // comes back off with it rather than staying lit over nothing.
+      this.autoLaunch = false;
       this.prepared = PixelWorld.create(palette, colorId);
       this.events.onLevelPrepared?.(palette, this.prepared.colorId, this.prepared.width);
     } catch (error) {
@@ -408,6 +415,7 @@ export class GameController {
     const bonus = this.meta.bonus();
     this.completions = 0;
     this.upgrades = new UpgradeState({ ...bonus.carriedLevels }, bonus.startingFragments);
+    this.autoLaunch = false;
     this.rebuildFromBaseImage();
     return true;
   }
@@ -564,7 +572,9 @@ export class GameController {
 
     if (this.phase !== "playing" || !this.combat || !this.world || !this.board) return;
 
-    if (this.meta.bonus().canAutoBuy && nowMs - this.lastAutoBuyMs > AUTO_BUY_INTERVAL_MS) {
+    const shopping = this.upgrades.effects(this.meta.bonus());
+
+    if (shopping.canAutoBuy && nowMs - this.lastAutoBuyMs > AUTO_BUY_INTERVAL_MS) {
       this.lastAutoBuyMs = nowMs;
       // The cheapest one, so it spends fragments the way a player watching the
       // panel would: little and often, never saving up for one big axis it was
@@ -573,11 +583,35 @@ export class GameController {
       if (cheapest) this.buyUpgrade(cheapest);
     }
 
-    if (this.autoLaunch && this.queue) {
-      // One per frame, not a loop: the rail should visibly fill rather than
+    // The automaton fires on its own clock, and that clock is a thing the toile
+    // buys down. Bought bare it waits eight seconds — enough that a thumb still
+    // beats it, little enough that a phone left on the table finally does
+    // something — and every level of Cadence takes fifteen percent off, to a
+    // quarter of a second. That is the axis the run is built around: the early
+    // minutes are played by hand, and the toile automates itself as it pays.
+    const autoMs = shopping.autoLaunchMs;
+    const autoDue = autoMs !== null && nowMs - this.lastAutoLaunchMs >= autoMs;
+
+    if (this.autoLaunch && this.queue && autoDue) {
+      this.lastAutoLaunchMs = nowMs;
+      // One per interval, not a loop: the rail should visibly fill rather than
       // blink from empty to full, and a slot that frees this frame is served
-      // on the next one anyway.
-      const next = this.queue.visible[0];
+      // on the next tick anyway.
+      //
+      // The first offer is the wrong one to take. Late in a toile some colours
+      // are buried behind others, and a cannon sent after one of those flies a
+      // whole lap, destroys nothing and comes back — so an automaton that always
+      // took slot one sent every cannon into the same wall. Measured on a toile
+      // that a player tapping around finished in twenty-nine minutes: the
+      // automaton was still at eighty-six percent after three hours, having
+      // launched the three shootable colours exactly zero times in the last ten
+      // minutes of it. It picks a colour something actually exposes, and only
+      // falls back to the first offer when nothing does.
+      const reachable = this.combat.reachableColors;
+      const offers = this.queue.visible;
+      const next =
+        (reachable ? offers.find((load) => reachable[load.colorId] !== false) : undefined) ??
+        offers[0];
       if (next && this.combat.hasFreeSlot) this.launch(next.id);
     }
 
