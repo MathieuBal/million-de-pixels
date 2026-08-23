@@ -1,0 +1,450 @@
+[
+  {
+    "file": "toile-01.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 10,
+    "buriedAtStart": 3,
+    "smallestShare": 0.0037298202514648438
+  },
+  {
+    "file": "toile-02.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 11,
+    "buriedAtStart": 1,
+    "smallestShare": 0.0018329620361328125
+  },
+  {
+    "file": "toile-03.png",
+    "paletteSize": 5,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 0,
+    "smallestShare": 0.15234851837158203
+  },
+  {
+    "file": "toile-04.png",
+    "paletteSize": 6,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 0,
+    "smallestShare": 0.004314422607421875
+  },
+  {
+    "file": "toile-05.png",
+    "paletteSize": 7,
+    "playablePixels": 1048576,
+    "rareColors": 3,
+    "buriedAtStart": 0,
+    "smallestShare": 0.002918243408203125
+  },
+  {
+    "file": "toile-06.png",
+    "paletteSize": 7,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 0,
+    "smallestShare": 0.0054264068603515625
+  },
+  {
+    "file": "toile-07.png",
+    "paletteSize": 15,
+    "playablePixels": 1048576,
+    "rareColors": 9,
+    "buriedAtStart": 0,
+    "smallestShare": 0.0021295547485351562
+  },
+  {
+    "file": "toile-08.png",
+    "paletteSize": 15,
+    "playablePixels": 1048576,
+    "rareColors": 4,
+    "buriedAtStart": 0,
+    "smallestShare": 0.00402069091796875
+  },
+  {
+    "file": "toile-09.png",
+    "paletteSize": 6,
+    "playablePixels": 1048576,
+    "rareColors": 2,
+    "buriedAtStart": 0,
+    "smallestShare": 0.007153511047363281
+  },
+  {
+    "file": "toile-10.png",
+    "paletteSize": 13,
+    "playablePixels": 1048576,
+    "rareColors": 10,
+    "buriedAtStart": 1,
+    "smallestShare": 0.0011510848999023438
+  },
+  {
+    "file": "toile-11.png",
+    "paletteSize": 5,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 0,
+    "smallestShare": 0.13583660125732422
+  },
+  {
+    "file": "toile-12.png",
+    "paletteSize": 14,
+    "playablePixels": 1048576,
+    "rareColors": 5,
+    "buriedAtStart": 4,
+    "smallestShare": 0.0011777877807617188
+  },
+  {
+    "file": "toile-13.png",
+    "paletteSize": 7,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 3,
+    "smallestShare": 0.04480552673339844
+  },
+  {
+    "file": "toile-14.png",
+    "paletteSize": 14,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 0,
+    "smallestShare": 0.02411651611328125
+  },
+  {
+    "file": "toile-15.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 2,
+    "buriedAtStart": 2,
+    "smallestShare": 0.023571014404296875
+  },
+  {
+    "file": "toile-16.png",
+    "paletteSize": 5,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 0,
+    "smallestShare": 0.0046710968017578125
+  },
+  {
+    "file": "toile-17.png",
+    "paletteSize": 15,
+    "playablePixels": 1048576,
+    "rareColors": 5,
+    "buriedAtStart": 0,
+    "smallestShare": 0.004227638244628906
+  },
+  {
+    "file": "toile-18.png",
+    "paletteSize": 14,
+    "playablePixels": 1048576,
+    "rareColors": 5,
+    "buriedAtStart": 9,
+    "smallestShare": 0.0043354034423828125
+  },
+  {
+    "file": "toile-19.png",
+    "paletteSize": 5,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 4,
+    "smallestShare": 0.07018280029296875
+  },
+  {
+    "file": "toile-20.png",
+    "paletteSize": 5,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 0,
+    "smallestShare": 0.1146392822265625
+  },
+  {
+    "file": "toile-21.png",
+    "paletteSize": 7,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 0,
+    "smallestShare": 0.0038089752197265625
+  },
+  {
+    "file": "toile-22.png",
+    "paletteSize": 5,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 4,
+    "smallestShare": 0.12850475311279297
+  },
+  {
+    "file": "toile-23.png",
+    "paletteSize": 9,
+    "playablePixels": 1048576,
+    "rareColors": 2,
+    "buriedAtStart": 7,
+    "smallestShare": 0.011219024658203125
+  },
+  {
+    "file": "toile-24.png",
+    "paletteSize": 8,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 0,
+    "smallestShare": 0.003910064697265625
+  },
+  {
+    "file": "toile-25.png",
+    "paletteSize": 6,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 2,
+    "smallestShare": 0.028507232666015625
+  },
+  {
+    "file": "toile-26.png",
+    "paletteSize": 7,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 0,
+    "smallestShare": 0.00290679931640625
+  },
+  {
+    "file": "toile-27.png",
+    "paletteSize": 5,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 0,
+    "smallestShare": 0.1406841278076172
+  },
+  {
+    "file": "toile-28.png",
+    "paletteSize": 10,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 8,
+    "smallestShare": 0.020263671875
+  },
+  {
+    "file": "toile-29.png",
+    "paletteSize": 8,
+    "playablePixels": 1048576,
+    "rareColors": 2,
+    "buriedAtStart": 6,
+    "smallestShare": 0.004029273986816406
+  },
+  {
+    "file": "toile-30.png",
+    "paletteSize": 8,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 7,
+    "smallestShare": 0.03123950958251953
+  },
+  {
+    "file": "toile-31.png",
+    "paletteSize": 13,
+    "playablePixels": 1048576,
+    "rareColors": 4,
+    "buriedAtStart": 12,
+    "smallestShare": 0.0057220458984375
+  },
+  {
+    "file": "toile-32.png",
+    "paletteSize": 13,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 6,
+    "smallestShare": 0.032299041748046875
+  },
+  {
+    "file": "toile-33.png",
+    "paletteSize": 7,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 4,
+    "smallestShare": 0.09928512573242188
+  },
+  {
+    "file": "toile-34.png",
+    "paletteSize": 6,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 0,
+    "smallestShare": 0.07485198974609375
+  },
+  {
+    "file": "toile-35.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 9,
+    "buriedAtStart": 15,
+    "smallestShare": 0.007002830505371094
+  },
+  {
+    "file": "toile-36.png",
+    "paletteSize": 8,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 1,
+    "smallestShare": 0.0006656646728515625
+  },
+  {
+    "file": "toile-37.png",
+    "paletteSize": 6,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 1,
+    "smallestShare": 0.09932136535644531
+  },
+  {
+    "file": "toile-38.png",
+    "paletteSize": 10,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 1,
+    "smallestShare": 0.013758659362792969
+  },
+  {
+    "file": "toile-39.png",
+    "paletteSize": 7,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 6,
+    "smallestShare": 0.07786750793457031
+  },
+  {
+    "file": "toile-40.png",
+    "paletteSize": 10,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 1,
+    "smallestShare": 0.03815650939941406
+  },
+  {
+    "file": "toile-41.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 5,
+    "buriedAtStart": 14,
+    "smallestShare": 0.0053882598876953125
+  },
+  {
+    "file": "toile-42.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 4,
+    "buriedAtStart": 13,
+    "smallestShare": 0.025814056396484375
+  },
+  {
+    "file": "toile-43.png",
+    "paletteSize": 11,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 10,
+    "smallestShare": 0.02510356903076172
+  },
+  {
+    "file": "toile-44.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 12,
+    "buriedAtStart": 15,
+    "smallestShare": 0.006793975830078125
+  },
+  {
+    "file": "toile-45.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 6,
+    "buriedAtStart": 15,
+    "smallestShare": 0.012108802795410156
+  },
+  {
+    "file": "toile-46.png",
+    "paletteSize": 7,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 4,
+    "smallestShare": 0.07197952270507812
+  },
+  {
+    "file": "toile-47.png",
+    "paletteSize": 10,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 1,
+    "smallestShare": 0.034806251525878906
+  },
+  {
+    "file": "toile-48.png",
+    "paletteSize": 8,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 0,
+    "smallestShare": 0.03699493408203125
+  },
+  {
+    "file": "toile-49.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 6,
+    "buriedAtStart": 15,
+    "smallestShare": 0.008493423461914062
+  },
+  {
+    "file": "toile-50.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 2,
+    "buriedAtStart": 1,
+    "smallestShare": 0.013835906982421875
+  },
+  {
+    "file": "toile-51.png",
+    "paletteSize": 12,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 11,
+    "smallestShare": 0.03929424285888672
+  },
+  {
+    "file": "toile-52.png",
+    "paletteSize": 10,
+    "playablePixels": 1048576,
+    "rareColors": 6,
+    "buriedAtStart": 9,
+    "smallestShare": 0.014119148254394531
+  },
+  {
+    "file": "toile-53.png",
+    "paletteSize": 9,
+    "playablePixels": 1048576,
+    "rareColors": 0,
+    "buriedAtStart": 0,
+    "smallestShare": 0.046844482421875
+  },
+  {
+    "file": "toile-54.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 6,
+    "buriedAtStart": 15,
+    "smallestShare": 0.02462291717529297
+  },
+  {
+    "file": "toile-55.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 2,
+    "buriedAtStart": 2,
+    "smallestShare": 0.02720928192138672
+  },
+  {
+    "file": "toile-56.png",
+    "paletteSize": 16,
+    "playablePixels": 1048576,
+    "rareColors": 1,
+    "buriedAtStart": 0,
+    "smallestShare": 0.028636932373046875
+  }
+]
