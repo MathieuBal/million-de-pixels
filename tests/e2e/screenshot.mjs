@@ -47,6 +47,19 @@ try {
   const page = await browser.newPage({ viewport: { width: W, height: H } });
   page.on("pageerror", (e) => console.log("PAGEERROR", e.message));
   await page.goto(URL, { waitUntil: "networkidle" });
+
+  // L'accueil tel qu'il s'ouvre : campagne comprise, sans rien avoir importé.
+  if (process.env.SHOT_HOME) {
+    await page.waitForTimeout(700);
+    if (process.env.SHOT_SCROLL) {
+      await page.evaluate((y) => window.scrollTo(0, Number(y)), process.env.SHOT_SCROLL);
+      await page.waitForTimeout(200);
+    }
+    await page.screenshot({ path: OUT, fullPage: process.env.SHOT_FULL === "1" });
+    await browser.close();
+    process.exit(0);
+  }
+
   await page.setInputFiles("#file-input", fixture);
   await page.waitForSelector("#start-run:not([disabled])", { timeout: 60000 });
   await page.locator("#start-run").click();

@@ -42,6 +42,7 @@ import {
 } from "../progression/MetaProgression";
 import { ColorStats } from "../world/ColorStats";
 import { PixelWorld } from "../world/PixelWorld";
+import type { CampaignProgress } from "../progression/Campaign";
 import {
   DEFAULT_DOCTRINE,
   applyDoctrine,
@@ -92,6 +93,7 @@ const PROFILE_ID = "local";
 /** Settings key holding the profile's permanent progression. */
 const META_KEY = "meta:local";
 const GALLERY_KEY = "gallery:local";
+const CAMPAIGN_KEY = "campaign:local";
 
 /**
  * Lancements que l'automate peut rattraper d'un coup.
@@ -161,6 +163,15 @@ export class GameController {
    * multiplier rather than a decision — which is the defect it exists to fix.
    */
   private doctrineId: DoctrineId = DEFAULT_DOCTRINE;
+  /**
+   * L'avancement de campagne, et la toile de campagne en cours s'il y en a une.
+   *
+   * Une image importée à la main ne fait avancer aucune campagne : sinon
+   * n'importe quel fichier déverrouillerait la suite, et la pente ne voudrait
+   * plus rien dire.
+   */
+  private campaign: CampaignProgress = { cleared: [] };
+  private campaignId: string | null = null;
   private gallery = new ImageGallery();
 
   /** The images already played, with their best times. */
@@ -260,6 +271,28 @@ export class GameController {
     this.applyUpgrades();
     void this.saveMeta();
     return true;
+  }
+
+  get campaignProgress(): CampaignProgress {
+    return { cleared: [...this.campaign.cleared] };
+  }
+
+  /**
+   * Marque la prochaine image importée comme étant cette toile de campagne, ou
+   * `null` pour un fichier déposé à la main.
+   *
+   * Les deux chemins d'import le disent explicitement plutôt que l'un des deux
+   * de se fier à ce que l'autre a laissé : sans ça, un fichier déposé juste
+   * après une toile de campagne hériterait de son identité et déverrouillerait
+   * la suite, ce qui viderait la pente de son sens.
+   */
+  beginCampaign(id: string | null): void {
+    this.campaignId = id;
+  }
+
+  /** Remonte une panne au joueur par le même chemin que les autres erreurs. */
+  reportError(message: string): void {
+    this.events.onError?.(message);
   }
 
   get doctrine(): DoctrineId {
@@ -520,6 +553,8 @@ export class GameController {
     this.doctrineId = DEFAULT_DOCTRINE;
     this.meta = new MetaProgression();
     this.gallery = new ImageGallery();
+    this.campaign = { cleared: [] };
+    this.campaignId = null;
     this.upgrades = new UpgradeState();
     this.saveDirty = false;
     this.setPhase("idle");
@@ -880,6 +915,13 @@ export class GameController {
         },
         this.upgrades.serialize().levels,
       );
+      // Une toile de campagne finie ouvre la suite. Seulement une vraie fin :
+      // abandonner et réimporter ne déverrouille rien.
+      if (this.campaignId !== null && !this.campaign.cleared.includes(this.campaignId)) {
+        this.campaign.cleared.push(this.campaignId);
+        void this.saveCampaign();
+      }
+
       // The time is what the player beat, so it is banked with the reward.
       const outcome =
         this.imageId === null
@@ -988,6 +1030,8 @@ export class GameController {
     try {
       const gallery = await this.saves.getSetting<GallerySnapshot>(GALLERY_KEY);
       if (gallery) this.gallery = ImageGallery.restore(gallery);
+      const campaign = await this.saves.getSetting<CampaignProgress>(CAMPAIGN_KEY);
+      if (campaign?.cleared) this.campaign = { cleared: [...campaign.cleared] };
     } catch {
       // Same: a gallery that will not load costs a record, not a run.
     }
@@ -998,6 +1042,16 @@ export class GameController {
    * save: it outlives every image it holds, and a level save is deleted when
    * the player changes picture.
    */
+  private async saveCampaign(): Promise<void> {
+    try {
+      await this.saves.setSetting(CAMPAIGN_KEY, this.campaign);
+    } catch (error) {
+      this.events.onError?.(
+        `Campagne non sauvegardée : ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   private async saveGallery(): Promise<void> {
     try {
       await this.saves.setSetting(GALLERY_KEY, this.gallery.serialize());

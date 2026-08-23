@@ -342,6 +342,47 @@ html, body {
 .adv-row input:disabled { opacity: 0.4; }
 
 /*
+ * La campagne. Une grille de cartes, la plus douce en premier — la pente est
+ * l'information, donc elle doit se voir sans être lue.
+ */
+.campaign { margin-top: 22px; }
+.campaign-head { display: flex; justify-content: space-between; align-items: baseline; }
+.campaign-progress { font-family: var(--mono); font-size: 11px; color: var(--muted-2); }
+.campaign-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  /* Cinquante-six cartes ne tiennent pas sur un écran de téléphone et n'ont pas
+     à y tenir : la liste défile dans sa propre boîte plutôt que de repousser le
+     bouton de départ hors de portée. */
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
+}
+.campaign-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  border-radius: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.campaign-card[data-state="locked"] { opacity: 0.4; cursor: not-allowed; }
+.campaign-card[data-state="cleared"] { border-color: rgba(109, 229, 176, 0.4); }
+.campaign-card:not([disabled]):hover { border-color: var(--accent); }
+.campaign-name { font-size: 12px; font-weight: 600; color: var(--text-2); }
+/* La note en points : elle se compare d'une carte à l'autre sans être lue. */
+.campaign-dots { font-family: var(--mono); font-size: 10px; color: var(--accent); letter-spacing: 0.1em; }
+.campaign-hint { font-size: 10px; line-height: 1.35; color: var(--muted-3); }
+.campaign-done { font-family: var(--mono); font-size: 9px; color: var(--reach); }
+
+/*
  * Le choix de doctrine. Une carte par doctrine, en colonne : les trois lignes
  * — ce qu'elle donne, ce qu'elle retire, à quoi elle va — ne tiennent pas côte
  * à côte sur un téléphone, et c'est le coût qu'on tronquerait en premier.
