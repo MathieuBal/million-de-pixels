@@ -5,6 +5,7 @@ import { GameScreen } from "./ui/GameScreen";
 import { ImportScreen } from "./ui/ImportScreen";
 import { RunMenu } from "./ui/RunMenu";
 import { GalleryPanel } from "./ui/GalleryPanel";
+import { DoctrinePanel } from "./ui/DoctrinePanel";
 import { OfflineScreen } from "./ui/OfflineScreen";
 import { ViewportControls } from "./ui/ViewportControls";
 
@@ -38,6 +39,7 @@ async function boot(): Promise<void> {
   let offlineScreen: OfflineScreen;
   let runMenu: RunMenu;
   let gallery: GalleryPanel | undefined;
+  let doctrine: DoctrinePanel | undefined;
   let syncBoard: () => void;
 
   const game: GameController = new GameController(app, {
@@ -60,8 +62,11 @@ async function boot(): Promise<void> {
     onProgress: ({ stage, progress }) => importScreen.updateStage(stage, progress),
     onLevelPrepared: (palette, colorId, width) => {
       importScreen.showResult(palette, colorId, width);
-      // An image joins the gallery at import, so the grid gains its card now.
+      // An image joins the gallery at import, so the grid gains its card now —
+      // and the doctrine can be chosen, since there is finally a toile to
+      // commit it to.
       gallery?.render();
+      doctrine?.render();
     },
     onLevelReady: (world) => {
       gameScreen.setLevelLabel(`Image · ${world.paletteSize} couleurs`);
@@ -93,6 +98,7 @@ async function boot(): Promise<void> {
 
   runMenu = new RunMenu(game, () => gameScreen.upgrades.open("permanent"));
   gallery = new GalleryPanel(game);
+  doctrine = new DoctrinePanel(game);
 
   importScreen.onStart(() => game.startPreparedLevel());
   importScreen.onResume(() => game.resume());

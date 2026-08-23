@@ -76,10 +76,18 @@ export const DOCTRINES: DoctrineDefinition[] = [
     label: "Essaim",
     glyph: "+3",
     gain: "+3 canons sur le rail",
-    cost: "−25 % de billes par case",
+    // Le coût ne peut pas être les billes, et c'est mesuré : un canon dépense
+    // son chargeur puis quitte le rail, donc les billes sont exactement ce qui
+    // permet à plusieurs canons de coexister. Amputées de 25 %, un canon vivait
+    // 0,92 s et le rail n'en tenait que 2,3 — sur les 8 emplacements que la
+    // doctrine venait d'acheter. Elle se sabotait elle-même et n'était première
+    // à aucun tempo. En vitesse, le coût joue dans l'autre sens : les canons
+    // dépensent plus lentement, donc ils se chevauchent, donc les emplacements
+    // servent.
+    cost: "−25 % de vitesse de rail",
     suits: "les palettes larges, où chaque couleur veut son canon",
-    speedMultiplier: 1,
-    ammoMultiplier: 0.75,
+    speedMultiplier: 0.75,
+    ammoMultiplier: 1,
     extraCannons: 3,
   },
 ];

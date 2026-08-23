@@ -341,6 +341,36 @@ html, body {
 .adv-row input[type="range"] { width: 96px; }
 .adv-row input:disabled { opacity: 0.4; }
 
+/*
+ * Le choix de doctrine. Une carte par doctrine, en colonne : les trois lignes
+ * — ce qu'elle donne, ce qu'elle retire, à quoi elle va — ne tiennent pas côte
+ * à côte sur un téléphone, et c'est le coût qu'on tronquerait en premier.
+ */
+.doctrine { margin-top: 22px; }
+.doctrine[hidden] { display: none; }
+.doctrine-choices { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.doctrine-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 16px;
+  text-align: left;
+  font: inherit;
+  border-radius: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.doctrine-card[data-active="true"] { border-color: var(--accent); background: var(--raise); }
+.doctrine-head { display: flex; justify-content: space-between; align-items: baseline; }
+.doctrine-head b { font-size: 14px; color: var(--text); }
+.doctrine-head i { font-family: var(--mono); font-style: normal; font-size: 12px; color: var(--muted-3); }
+/* Le gain en clair, le coût en rouge : la couleur dit lequel est lequel avant
+   que le texte ne soit lu. */
+.doctrine-gain { font-family: var(--mono); font-size: 11px; color: var(--reach); }
+.doctrine-cost { font-family: var(--mono); font-size: 11px; color: var(--danger); }
+.doctrine-suits { font-size: 11px; line-height: 1.4; color: var(--muted-2); }
+
 .import-footer { margin-top: auto; padding-top: 22px; display: flex; flex-direction: column; gap: 12px; }
 
 .notice {

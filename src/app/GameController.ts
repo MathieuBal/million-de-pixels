@@ -43,6 +43,12 @@ import {
 import { ColorStats } from "../world/ColorStats";
 import { PixelWorld } from "../world/PixelWorld";
 import {
+  DEFAULT_DOCTRINE,
+  applyDoctrine,
+  doctrineOf,
+  type DoctrineId,
+} from "../progression/Doctrine";
+import {
   ImageGallery,
   hashImage,
   thumbnailOf,
@@ -147,6 +153,14 @@ export class GameController {
   private playedMs = 0;
   /** Which image of the gallery this run is playing. */
   private imageId: string | null = null;
+  /**
+   * The doctrine this toile is played under.
+   *
+   * Chosen before the run and fixed for its whole length: it is an engagement,
+   * not a setting. One that could be switched mid-run would be a seventh
+   * multiplier rather than a decision — which is the defect it exists to fix.
+   */
+  private doctrineId: DoctrineId = DEFAULT_DOCTRINE;
   private gallery = new ImageGallery();
 
   /** The images already played, with their best times. */
@@ -248,6 +262,26 @@ export class GameController {
     return true;
   }
 
+  get doctrine(): DoctrineId {
+    return this.doctrineId;
+  }
+
+  /** True once an import has a board waiting to be started. */
+  get hasPreparedLevel(): boolean {
+    return this.prepared !== null;
+  }
+
+  /**
+   * Commits this toile to a doctrine. Refused once the run has begun: the whole
+   * point is that it cannot be reconsidered halfway.
+   */
+  setDoctrine(id: DoctrineId): boolean {
+    if (this.phase === "playing") return false;
+    this.doctrineId = id;
+    this.applyUpgrades();
+    return true;
+  }
+
   getUpgrades(): UpgradeState {
     return this.upgrades;
   }
@@ -319,7 +353,10 @@ export class GameController {
 
   private applyUpgrades(): void {
     const bonus = this.meta.bonus();
-    const effects = this.upgrades.effects(bonus);
+    // The doctrine bends what the shop bought rather than what the game starts
+    // from: its cost has to grow with the axis it amputates, or a −30 % on the
+    // magazine stops being felt exactly when the magazine gets big.
+    const effects = applyDoctrine(this.upgrades.effects(bonus), doctrineOf(this.doctrineId));
     this.effects = effects;
 
     // Négoce discounts the shop the player is looking at, so it is set on the
