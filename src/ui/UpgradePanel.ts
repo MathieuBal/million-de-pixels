@@ -3,6 +3,7 @@ import {
   FAMILY_LABELS,
   FAMILY_ORDER,
   UPGRADES,
+  UPGRADE_BY_ID,
   type UpgradeDefinition,
   type UpgradeFamily,
 } from "../progression/Upgrades";
@@ -271,43 +272,62 @@ export class UpgradePanel {
   private levelRow(definition: UpgradeDefinition): HTMLElement {
     const upgrades = this.game.getUpgrades();
     const level = upgrades.levelOf(definition.id);
+    const missing = upgrades.missingFor(definition.id);
+    const locked = missing.length > 0;
     const price = upgrades.priceOf(definition.id);
-    const maxed = price === null;
+    const maxed = !locked && price === null;
 
     const row = document.createElement("div");
     row.className = "upgrade-row";
-    row.dataset.state = maxed ? "max" : upgrades.canAfford(definition.id) ? "buy" : "poor";
+    row.dataset.state = locked
+      ? "locked"
+      : maxed
+        ? "max"
+        : upgrades.canAfford(definition.id)
+          ? "buy"
+          : "poor";
 
     const chip = document.createElement("span");
     chip.className = "chip";
     chip.textContent = definition.glyph;
 
-    const quote = maxed ? { levels: 0, price: 0 } : this.quote(definition.id);
+    const quote = maxed || locked ? { levels: 0, price: 0 } : this.quote(definition.id);
     const shown = Math.max(1, quote.levels);
     const current = definition.format(definition.valueAt(level));
-    const next = maxed ? "" : ` → ${definition.format(definition.valueAt(level + shown))}`;
+    const next = maxed || locked ? "" : ` → ${definition.format(definition.valueAt(level + shown))}`;
+
+    // A locked axis says what door it is behind rather than a value it cannot
+    // have: "here is the next thing to want" is the reason it is listed at all.
+    const doors = missing
+      .map((id) => UPGRADE_BY_ID.get(id)?.label ?? id)
+      .join(", ");
 
     const text = document.createElement("span");
     text.className = "text";
     text.innerHTML =
-      `<span class="name">${definition.label} · niv. ${level}</span>` +
-      `<span class="meta">${current}${next}</span>` +
+      `<span class="name">${definition.label}${locked ? "" : ` · niv. ${level}`}</span>` +
+      `<span class="meta">${locked ? `demande ${doors}` : `${current}${next}`}</span>` +
       `<span class="what">${definition.description}</span>` +
-      `<span class="track"><i style="width:${((level / definition.maxLevel) * 100).toFixed(1)}%"></i></span>`;
+      `<span class="track"><i style="width:${locked ? 0 : ((level / definition.maxLevel) * 100).toFixed(1)}%"></i></span>`;
 
     const batched = quote.levels > 1;
     const button = document.createElement("button");
     button.className = "price";
     button.type = "button";
-    button.disabled = maxed || quote.levels === 0;
-    button.innerHTML = maxed
-      ? "max"
-      : quote.levels === 0
-        ? `${formatCount(price)} ◈`
-        : `${formatCount(quote.price)} ◈${batched ? `<small>×${quote.levels}</small>` : ""}`;
-    button.title = maxed
-      ? `${definition.label} — niveau maximum atteint`
-      : definition.description;
+    button.disabled = locked || maxed || quote.levels === 0;
+    button.innerHTML = locked
+      ? "verrouillé"
+      : maxed
+        ? "max"
+        : quote.levels === 0
+          ? // Never null here: locked and maxed are both handled above.
+            `${formatCount(price ?? 0)} ◈`
+          : `${formatCount(quote.price)} ◈${batched ? `<small>×${quote.levels}</small>` : ""}`;
+    button.title = locked
+      ? `${definition.label} — demande ${doors}`
+      : maxed
+        ? `${definition.label} — niveau maximum atteint`
+        : definition.description;
     button.addEventListener("click", () => {
       if (this.game.buyUpgrade(definition.id, Math.max(1, quote.levels))) this.renderPanel();
     });

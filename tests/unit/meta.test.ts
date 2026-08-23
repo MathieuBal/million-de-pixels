@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CRAFT_PER_CLEAR,
   META_BY_ID,
+  META_UPGRADES,
   MetaProgression,
   rewardForClear,
   NO_PERMANENT_BONUS,
@@ -153,56 +154,6 @@ describe("MetaProgression", () => {
     });
   });
 
-  describe("capacités", () => {
-    it("hides a branch until its capability is bought", () => {
-      const meta = new MetaProgression({ earned: 100_000 });
-      expect(meta.isAvailable("souffle")).toBe(false);
-      expect(meta.priceOf("souffle")).toBeNull();
-      expect(meta.buy("souffle")).toBe(false);
-
-      expect(meta.buy("explosion")).toBe(true);
-      expect(meta.isAvailable("souffle")).toBe(true);
-      expect(meta.buy("souffle")).toBe(true);
-    });
-
-    it("leaves a branch inert while its capability is not owned", () => {
-      // Nothing can buy into a locked branch, so the bonus stays at zero and
-      // the cannon simply does not have the capability.
-      const meta = new MetaProgression({ earned: 100_000 });
-      expect(meta.bonus().effects.explosionChance).toBe(0);
-      meta.buy("explosion");
-      expect(meta.bonus().effects.explosionChance).toBeGreaterThan(0);
-      expect(meta.bonus().effects.lightningChance).toBe(0);
-    });
-
-    it("gives each capability a working baseline the moment it is unlocked", () => {
-      const meta = new MetaProgression({ earned: 100_000 });
-      for (const id of ["perce", "explosion", "foudre", "feu"] as const) {
-        expect(meta.buy(id)).toBe(true);
-      }
-      const effects = meta.bonus().effects;
-      expect(effects.pierceChance).toBeGreaterThan(0);
-      expect(effects.pierceDepth).toBeGreaterThan(0);
-      expect(effects.explosionRadius).toBeGreaterThan(0);
-      expect(effects.lightningArcs).toBeGreaterThan(0);
-      expect(effects.fireSpread).toBeGreaterThan(0);
-    });
-
-    it("caps a proc chance below certainty", () => {
-      const meta = new MetaProgression({ earned: 100_000_000 });
-      meta.buy("foudre");
-      for (let i = 0; i < 3000; i++) meta.buy("foudreProc");
-      expect(meta.bonus().effects.lightningChance).toBeLessThanOrEqual(0.9);
-    });
-
-    it("keeps Emplette behind Automate", () => {
-      const meta = new MetaProgression({ earned: 100_000 });
-      expect(meta.isAvailable("emplette")).toBe(false);
-      meta.buy("auto");
-      expect(meta.isAvailable("emplette")).toBe(true);
-    });
-  });
-
   describe("mémoire", () => {
     it("carries nothing until it is bought", () => {
       const meta = new MetaProgression();
@@ -245,9 +196,22 @@ describe("MetaProgression", () => {
 
   it("refuses what it cannot pay for", () => {
     const meta = new MetaProgression();
-    expect(meta.canAfford("auto")).toBe(false);
-    expect(meta.buy("auto")).toBe(false);
-    expect(meta.bonus().canAutoLaunch).toBe(false);
+    expect(meta.canAfford("filtre")).toBe(false);
+    expect(meta.buy("filtre")).toBe(false);
+    expect(meta.bonus().canFilterQueue).toBe(false);
+  });
+
+  it("ne garde que ce qui survit à une image", () => {
+    // Les capacités et l'automate sont passés dans la boutique de la toile :
+    // ce qui agit *dans* une partie s'achète en fragments et se rejoue à chaque
+    // image, ce qui la précède ou lui survit reste ici, en éclats.
+    const ids = META_UPGRADES.map((u) => u.id) as string[];
+    for (const moved of ["perce", "explosion", "foudre", "feu", "auto", "emplette"]) {
+      expect(ids).not.toContain(moved);
+    }
+    for (const kept of ["negoce", "elan", "prospecteur", "memoire", "filtre", "nuancier"]) {
+      expect(ids).toContain(kept);
+    }
   });
 
   it("treats the comfort unlocks as one-shot", () => {

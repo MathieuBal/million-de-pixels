@@ -2,6 +2,7 @@ import { CANNON_MOVE_SPEED } from "../cannon/ActiveCannon";
 import { DEFAULT_LOAD_AMMO } from "../cannon/CannonLoad";
 import { VISIBLE_LOADS } from "../cannon/CannonQueue";
 import { MAX_ACTIVE_CANNONS } from "../combat/CombatSimulator";
+import type { EffectLoadout } from "../combat/SpecialEffects";
 import { NO_PERMANENT_BONUS, type PermanentBonus } from "./MetaProgression";
 
 export type UpgradeId =
@@ -12,17 +13,42 @@ export type UpgradeId =
   | "gain"
   | "veille"
   | "salve"
-  | "jumeau";
+  | "jumeau"
+  // Automatisme — l'automate et son délai
+  | "automate"
+  | "cadence"
+  | "emplette"
+  // Capacités — chacune un déblocage, puis ses propres réglages
+  | "perce"
+  | "perceProc"
+  | "pointe"
+  | "explosion"
+  | "explosionProc"
+  | "souffle"
+  | "foudre"
+  | "foudreProc"
+  | "chaine"
+  | "feu"
+  | "feuProc"
+  | "brasier";
 
-export type UpgradeFamily = "rail" | "cases" | "economie";
+export type UpgradeFamily = "rail" | "cases" | "economie" | "automatisme" | "capacites";
 
 export const FAMILY_LABELS: Record<UpgradeFamily, string> = {
   rail: "Rail",
   cases: "Cases",
   economie: "Économie",
+  automatisme: "Automatisme",
+  capacites: "Capacités",
 };
 
-export const FAMILY_ORDER: UpgradeFamily[] = ["rail", "cases", "economie"];
+export const FAMILY_ORDER: UpgradeFamily[] = [
+  "rail",
+  "cases",
+  "economie",
+  "automatisme",
+  "capacites",
+];
 
 export interface UpgradeDefinition {
   id: UpgradeId;
@@ -34,10 +60,32 @@ export interface UpgradeDefinition {
   maxLevel: number;
   basePrice: number;
   priceGrowth: number;
+  /**
+   * Axes that must be bought first. An axis whose parents are unbought is shown
+   * as a locked row rather than hidden: "here is the next thing to want" is the
+   * reason the shop has doors at all.
+   */
+  requires?: UpgradeId[];
   /** Value at a given level, and how to write it for the player. */
   valueAt: (level: number) => number;
   format: (value: number) => string;
 }
+
+/**
+ * How long the automaton waits between two launches, before any upgrade.
+ *
+ * Eight seconds: enough that tapping is still worth it, little enough that
+ * leaving the phone on the table finally does something. The whole point of
+ * moving the automaton into the toile's own shop is that a run should idle from
+ * its first minutes rather than after seven hours of profile — measured, before
+ * this: the automaton was a permanent node bought on the sixth toile, and the
+ * toile after it fell from fifty-eight minutes to seven. The entire difficulty
+ * of the game was one purchase.
+ */
+export const AUTO_LAUNCH_BASE_MS = 8000;
+
+/** Floor on that delay: below this, a launch a frame is not a delay any more. */
+export const AUTO_LAUNCH_FLOOR_MS = 250;
 
 /**
  * The four axes a player can push, in two families.
@@ -156,6 +204,211 @@ export const UPGRADES: UpgradeDefinition[] = [
     valueAt: (level) => Math.min(0.8, level * 0.004),
     format: (value) => `${(value * 100).toFixed(1)} % de jumeau`,
   },
+
+  // --- Automatisme ------------------------------------------------------
+  //
+  // A run should start by hand and end by itself. These are the toile's own
+  // purchases rather than the profile's, so every image replays that arc — which
+  // is what a roguelite is for, and what a permanent unlock destroyed: bought
+  // once on the sixth toile, it made every toile after it seven minutes long
+  // and every toile before it an hour of tapping.
+  {
+    id: "automate",
+    family: "automatisme",
+    label: "Automate",
+    glyph: "◉",
+    description: "Envoie une case tout seul, à intervalle",
+    maxLevel: 1,
+    basePrice: 2500,
+    priceGrowth: 1,
+    valueAt: (level) => level,
+    format: (value) => (value > 0 ? "en service" : "à l'arrêt"),
+  },
+  {
+    id: "cadence",
+    family: "automatisme",
+    label: "Cadence",
+    glyph: "≫",
+    description: "Délai entre deux envois automatiques",
+    maxLevel: 24,
+    basePrice: 400,
+    priceGrowth: 1.18,
+    requires: ["automate"],
+    valueAt: (level) =>
+      Math.max(AUTO_LAUNCH_FLOOR_MS, Math.round(AUTO_LAUNCH_BASE_MS * 0.85 ** level)),
+    format: (value) => `${(value / 1000).toFixed(2)} s`,
+  },
+  {
+    id: "emplette",
+    family: "automatisme",
+    label: "Emplette",
+    glyph: "⇵",
+    description: "Achète l'amélioration la moins chère dès qu'elle est payable",
+    maxLevel: 1,
+    basePrice: 12_000,
+    priceGrowth: 1,
+    requires: ["automate"],
+    valueAt: (level) => level,
+    format: (value) => (value > 0 ? "en service" : "à l'arrêt"),
+  },
+
+  // --- Capacités --------------------------------------------------------
+  //
+  // Four doors, each opening onto its own two numbers. They are bought with
+  // fragments inside a toile for the same reason the automaton is: a capability
+  // that a profile owns for good is a capability that stops being a decision.
+  {
+    id: "perce",
+    family: "capacites",
+    label: "Perce",
+    glyph: "→",
+    description: "Un tir peut traverser ce qui bouche la voie",
+    maxLevel: 1,
+    basePrice: 6000,
+    priceGrowth: 1,
+    valueAt: (level) => level,
+    format: (value) => (value > 0 ? "débloquée" : "verrouillée"),
+  },
+  {
+    id: "perceProc",
+    family: "capacites",
+    label: "Précision",
+    glyph: "%",
+    description: "Chance qu'un passage perce",
+    maxLevel: 150,
+    basePrice: 800,
+    priceGrowth: 1.12,
+    requires: ["perce"],
+    valueAt: (level) => Math.min(0.75, level * 0.004),
+    format: (value) => `${(value * 100).toFixed(1)} % de perce`,
+  },
+  {
+    id: "pointe",
+    family: "capacites",
+    label: "Pointe",
+    glyph: "▹",
+    description: "Cases étrangères qu'un tir peut regarder au-delà",
+    maxLevel: 10,
+    basePrice: 2500,
+    priceGrowth: 1.35,
+    requires: ["perce"],
+    valueAt: (level) => level,
+    format: (value) => `${value} case${value > 1 ? "s" : ""}`,
+  },
+  {
+    id: "explosion",
+    family: "capacites",
+    label: "Explosion",
+    glyph: "✳",
+    description: "Une case détruite peut emporter ses voisines",
+    maxLevel: 1,
+    basePrice: 15_000,
+    priceGrowth: 1,
+    valueAt: (level) => level,
+    format: (value) => (value > 0 ? "débloquée" : "verrouillée"),
+  },
+  {
+    id: "explosionProc",
+    family: "capacites",
+    label: "Amorce",
+    glyph: "%",
+    description: "Chance qu'une case détruite explose",
+    maxLevel: 150,
+    basePrice: 1000,
+    priceGrowth: 1.12,
+    requires: ["explosion"],
+    valueAt: (level) => Math.min(0.6, level * 0.003),
+    format: (value) => `${(value * 100).toFixed(1)} % d'explosion`,
+  },
+  {
+    id: "souffle",
+    family: "capacites",
+    label: "Souffle",
+    glyph: "◎",
+    description: "Rayon du souffle, en cases",
+    maxLevel: 8,
+    basePrice: 4000,
+    priceGrowth: 1.45,
+    requires: ["explosion"],
+    valueAt: (level) => level,
+    format: (value) => `${value} case${value > 1 ? "s" : ""}`,
+  },
+  {
+    id: "foudre",
+    family: "capacites",
+    label: "Foudre",
+    glyph: "⚡",
+    description: "Un arc saute vers une voisine de la même couleur",
+    maxLevel: 1,
+    basePrice: 30_000,
+    priceGrowth: 1,
+    valueAt: (level) => level,
+    format: (value) => (value > 0 ? "débloquée" : "verrouillée"),
+  },
+  {
+    id: "foudreProc",
+    family: "capacites",
+    label: "Charge",
+    glyph: "%",
+    description: "Chance qu'un arc parte",
+    maxLevel: 150,
+    basePrice: 1200,
+    priceGrowth: 1.12,
+    requires: ["foudre"],
+    valueAt: (level) => Math.min(0.6, level * 0.003),
+    format: (value) => `${(value * 100).toFixed(1)} % de foudre`,
+  },
+  {
+    id: "chaine",
+    family: "capacites",
+    label: "Rebond",
+    glyph: "⟿",
+    description: "Sauts supplémentaires de l'arc",
+    maxLevel: 12,
+    basePrice: 5000,
+    priceGrowth: 1.4,
+    requires: ["foudre"],
+    valueAt: (level) => level,
+    format: (value) => `${value} saut${value > 1 ? "s" : ""}`,
+  },
+  {
+    id: "feu",
+    family: "capacites",
+    label: "Feu",
+    glyph: "≋",
+    description: "Un incendie prend là où la case est morte",
+    maxLevel: 1,
+    basePrice: 60_000,
+    priceGrowth: 1,
+    valueAt: (level) => level,
+    format: (value) => (value > 0 ? "débloquée" : "verrouillée"),
+  },
+  {
+    id: "feuProc",
+    family: "capacites",
+    label: "Braise",
+    glyph: "%",
+    description: "Chance qu'un feu prenne",
+    maxLevel: 150,
+    basePrice: 1500,
+    priceGrowth: 1.12,
+    requires: ["feu"],
+    valueAt: (level) => Math.min(0.5, level * 0.0025),
+    format: (value) => `${(value * 100).toFixed(1)} % de feu`,
+  },
+  {
+    id: "brasier",
+    family: "capacites",
+    label: "Brasier",
+    glyph: "❋",
+    description: "Cases que l'incendie parcourt",
+    maxLevel: 12,
+    basePrice: 6000,
+    priceGrowth: 1.4,
+    requires: ["feu"],
+    valueAt: (level) => level,
+    format: (value) => `${value} case${value > 1 ? "s" : ""}`,
+  },
 ];
 
 export const UPGRADE_BY_ID = new Map(UPGRADES.map((u) => [u.id, u]));
@@ -175,6 +428,15 @@ export interface UpgradeEffects {
   doubleBiteChance: number;
   /** Chance a launched load puts two cannons on the rail instead of one. */
   twinChance: number;
+  /**
+   * Milliseconds between two automatic launches, or null while the automaton
+   * has not been bought. Null is "the player's thumb is the only clock".
+   */
+  autoLaunchMs: number | null;
+  /** Emplette: the shop buys its own cheapest axis. */
+  canAutoBuy: boolean;
+  /** Pierce, explosion, lightning and fire, as the toile has bought them. */
+  effects: EffectLoadout;
 }
 
 /**
@@ -216,6 +478,18 @@ export class UpgradeState {
     return definition ? this.levelOf(id) >= definition.maxLevel : true;
   }
 
+  /** The axes above this one that are still unbought. */
+  missingFor(id: UpgradeId): UpgradeId[] {
+    const definition = UPGRADE_BY_ID.get(id);
+    if (!definition?.requires) return [];
+    return definition.requires.filter((parent) => this.levelOf(parent) === 0);
+  }
+
+  /** True once every door this axis sits behind has been opened. */
+  isAvailable(id: UpgradeId): boolean {
+    return this.missingFor(id).length === 0;
+  }
+
   /**
    * The profile's shop discount. Applied at the price rather than at the
    * balance so the player sees what they are getting: the number on the button
@@ -228,7 +502,7 @@ export class UpgradeState {
   /** Cost of the next level, or null when the axis is maxed out. */
   priceOf(id: UpgradeId): number | null {
     const definition = UPGRADE_BY_ID.get(id);
-    if (!definition || this.isMaxed(id)) return null;
+    if (!definition || this.isMaxed(id) || !this.isAvailable(id)) return null;
     const full = definition.basePrice * definition.priceGrowth ** this.levelOf(id);
     return Math.max(1, Math.round(full * this.priceMultiplier));
   }
@@ -278,6 +552,8 @@ export class UpgradeState {
     const definition = UPGRADE_BY_ID.get(id);
     if (!definition) return { levels: 0, price: 0 };
 
+    if (!this.isAvailable(id)) return { levels: 0, price: 0 };
+
     let level = this.levelOf(id);
     let price = 0;
     let levels = 0;
@@ -316,7 +592,27 @@ export class UpgradeState {
       offlineMultiplier: valueOf("veille", this.levelOf("veille")) * bonus.offlineMultiplier,
       doubleBiteChance: valueOf("salve", this.levelOf("salve")),
       twinChance: valueOf("jumeau", this.levelOf("jumeau")),
+      autoLaunchMs: this.levelOf("automate") > 0 ? valueOf("cadence", this.levelOf("cadence")) : null,
+      canAutoBuy: this.levelOf("emplette") > 0,
+      effects: {
+        // A branch's numbers only exist once its door has been opened: an
+        // unbought Explosion leaves a radius bought under it inert rather than
+        // firing at a chance of zero, which is the same thing said less clearly.
+        pierceChance: this.behind("perce", "perceProc"),
+        pierceDepth: this.behind("perce", "pointe"),
+        explosionChance: this.behind("explosion", "explosionProc"),
+        explosionRadius: this.behind("explosion", "souffle"),
+        lightningChance: this.behind("foudre", "foudreProc"),
+        lightningArcs: this.behind("foudre", "chaine"),
+        fireChance: this.behind("feu", "feuProc"),
+        fireSpread: this.behind("feu", "brasier"),
+      },
     };
+  }
+
+  /** A stat's value, or zero while the capability it belongs to is unbought. */
+  private behind(unlock: UpgradeId, id: UpgradeId): number {
+    return this.levelOf(unlock) > 0 ? valueOf(id, this.levelOf(id)) : 0;
   }
 
   serialize(): { levels: UpgradeLevels; earned: number; spent: number } {

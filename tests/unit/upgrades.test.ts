@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { UPGRADES, UpgradeState } from "../../src/progression/Upgrades";
+import {
+  AUTO_LAUNCH_BASE_MS,
+  AUTO_LAUNCH_FLOOR_MS,
+  UPGRADES,
+  UpgradeState,
+} from "../../src/progression/Upgrades";
 import { CANNON_MOVE_SPEED } from "../../src/cannon/ActiveCannon";
 import { DEFAULT_LOAD_AMMO } from "../../src/cannon/CannonLoad";
 import { VISIBLE_LOADS } from "../../src/cannon/CannonQueue";
@@ -109,5 +114,114 @@ describe("UpgradeState", () => {
     const state = new UpgradeState({}, 50_000);
     state.buy("vitesse");
     expect(Object.keys(state.serialize().levels)).toEqual(["vitesse"]);
+  });
+});
+
+describe("la boutique de toile : automatisme et capacités", () => {
+  /** A shop with fragments to burn. */
+  function rich() {
+    return new UpgradeState({}, 100_000_000);
+  }
+
+  describe("automate", () => {
+    it("n'existe pas tant qu'il n'est pas acheté", () => {
+      const shop = new UpgradeState({}, 0);
+      expect(shop.effects().autoLaunchMs).toBeNull();
+    });
+
+    it("part d'un délai franc, que Cadence rachète", () => {
+      const shop = rich();
+      expect(shop.buy("automate")).toBe(true);
+      expect(shop.effects().autoLaunchMs).toBe(AUTO_LAUNCH_BASE_MS);
+
+      shop.buyMany("cadence", 10);
+      const faster = shop.effects().autoLaunchMs!;
+      expect(faster).toBeLessThan(AUTO_LAUNCH_BASE_MS);
+      // A delay that could reach zero is not a delay: the floor is the point at
+      // which "every so often" has become "every frame".
+      shop.buyMany("cadence", 1000);
+      expect(shop.effects().autoLaunchMs).toBe(AUTO_LAUNCH_FLOOR_MS);
+    });
+
+    it("garde Cadence et Emplette derrière lui", () => {
+      const shop = rich();
+      expect(shop.isAvailable("cadence")).toBe(false);
+      expect(shop.priceOf("cadence")).toBeNull();
+      expect(shop.buy("cadence")).toBe(false);
+      expect(shop.costOf("cadence", 10)).toEqual({ levels: 0, price: 0 });
+
+      shop.buy("automate");
+      expect(shop.isAvailable("cadence")).toBe(true);
+      expect(shop.buy("cadence")).toBe(true);
+      expect(shop.isAvailable("emplette")).toBe(true);
+    });
+
+    it("ne s'achète qu'une fois", () => {
+      const shop = rich();
+      expect(shop.buy("automate")).toBe(true);
+      expect(shop.isMaxed("automate")).toBe(true);
+      expect(shop.buy("automate")).toBe(false);
+    });
+  });
+
+  describe("capacités", () => {
+    it("laisse une branche inerte tant que sa capacité n'est pas ouverte", () => {
+      const shop = rich();
+      shop.buyMany("souffle", 5); // refusé : la porte est fermée
+      expect(shop.effects().effects.explosionRadius).toBe(0);
+      expect(shop.effects().effects.explosionChance).toBe(0);
+
+      shop.buy("explosion");
+      shop.buyMany("explosionProc", 10);
+      expect(shop.effects().effects.explosionChance).toBeGreaterThan(0);
+      // Et une capacité voisine, non achetée, reste à zéro.
+      expect(shop.effects().effects.lightningChance).toBe(0);
+    });
+
+    it("ouvre chacune des quatre portes séparément", () => {
+      for (const [unlock, proc] of [
+        ["perce", "pierceChance"],
+        ["explosion", "explosionChance"],
+        ["foudre", "lightningChance"],
+        ["feu", "fireChance"],
+      ] as const) {
+        const shop = rich();
+        shop.buy(unlock);
+        shop.buyMany(`${unlock}Proc` as never, 5);
+        expect(shop.effects().effects[proc]).toBeGreaterThan(0);
+      }
+    });
+
+    it("plafonne une chance en deçà de la certitude", () => {
+      const shop = rich();
+      shop.buy("foudre");
+      shop.buyMany("foudreProc", 5000);
+      expect(shop.effects().effects.lightningChance).toBeLessThan(1);
+    });
+
+    it("reprend à zéro sur une nouvelle toile", () => {
+      // C'est tout l'intérêt du déplacement : une capacité que le profil
+      // possédait pour de bon avait cessé d'être une décision.
+      const shop = rich();
+      shop.buy("feu");
+      expect(shop.effects().effects.fireChance).toBeGreaterThanOrEqual(0);
+
+      const next = new UpgradeState({}, 0);
+      expect(next.levelOf("feu")).toBe(0);
+      expect(next.effects().effects.fireChance).toBe(0);
+      expect(next.effects().autoLaunchMs).toBeNull();
+    });
+  });
+
+  it("un axe verrouillé n'est jamais le moins cher à acheter", () => {
+    // Emplette rachète l'axe le moins cher : s'il proposait une porte fermée,
+    // il se bloquerait dessus au lieu de dépenser.
+    const shop = new UpgradeState({}, 100_000_000);
+    for (let i = 0; i < 200; i++) {
+      const id = shop.cheapestAffordable();
+      if (!id) break;
+      expect(shop.isAvailable(id)).toBe(true);
+      shop.buy(id);
+    }
   });
 });

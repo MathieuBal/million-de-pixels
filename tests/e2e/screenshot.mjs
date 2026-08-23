@@ -160,6 +160,9 @@ try {
   if (process.env.SHOT_PANEL) {
     await page.locator("#pause").click();
     await page.waitForSelector("#upgrade-panel:not([hidden])");
+    if (process.env.SHOT_FAMILY) {
+      await page.locator(`.sub-tab[data-id="${process.env.SHOT_FAMILY}"]`).click();
+    }
     await page.waitForTimeout(400);
   }
   await page.screenshot({ path: OUT });

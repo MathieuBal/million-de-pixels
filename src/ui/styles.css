@@ -841,6 +841,10 @@ html, body {
    six branches on a phone will not fit, and a wrapped row moves under a tap. */
 .upgrade-subtabs {
   display: flex;
+  /* A scroll container's automatic minimum size is zero, so inside a flex
+     column it will happily crush itself to its padding. The plane strip in the
+     colour book did exactly that. */
+  flex: 0 0 auto;
   gap: 5px;
   overflow-x: auto;
   overscroll-behavior: contain;

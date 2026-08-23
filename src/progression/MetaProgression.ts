@@ -35,46 +35,20 @@ export type MetaUpgradeId =
   | "heritage"
   | "socle"
   | "memoire"
-  // Capacités
-  | "perce"
-  | "perceProc"
-  | "pointe"
-  | "explosion"
-  | "explosionProc"
-  | "souffle"
-  | "foudre"
-  | "foudreProc"
-  | "chaine"
-  | "feu"
-  | "feuProc"
-  | "brasier"
   // Confort
   | "filtre"
-  | "auto"
-  | "emplette"
   | "nuancier";
 
 export type MetaKind = "point" | "unlock" | "stat";
 
-export type MetaBranch = "racine" | "perce" | "explosion" | "foudre" | "feu" | "confort";
+export type MetaBranch = "racine" | "confort";
 
 export const BRANCH_LABELS: Record<MetaBranch, string> = {
   racine: "Fondations",
-  perce: "Perce",
-  explosion: "Explosion",
-  foudre: "Foudre",
-  feu: "Feu",
   confort: "Confort",
 };
 
-export const BRANCH_ORDER: MetaBranch[] = [
-  "racine",
-  "perce",
-  "explosion",
-  "foudre",
-  "feu",
-  "confort",
-];
+export const BRANCH_ORDER: MetaBranch[] = ["racine", "confort"];
 
 export interface MetaUpgradeDefinition {
   id: MetaUpgradeId;
@@ -121,7 +95,6 @@ export interface MetaUpgradeDefinition {
  */
 const TICK = 0.004;
 
-const pct = (value: number) => `${(value * 100).toFixed(1)} %`;
 const mult = (value: number) => `×${value.toFixed(3)}`;
 
 export const META_UPGRADES: MetaUpgradeDefinition[] = [
@@ -251,178 +224,6 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
     format: (value) => `+${value} canons`,
   },
 
-  // --- Capacités --------------------------------------------------------
-  {
-    id: "perce",
-    ladder: "Capacité",
-    kind: "unlock",
-    branch: "perce",
-    label: "Perce",
-    glyph: "→",
-    description:
-      "Un tir peut atteindre sa couleur derrière ce qui la couvre. Ce qu'il traverse n'est jamais détruit.",
-    basePrice: 100,
-    priceStep: 0,
-    maxLevel: 1,
-    valueAt: (p) => p,
-    format: (v) => (v > 0 ? "débloqué" : "verrouillé"),
-  },
-  {
-    id: "perceProc",
-    ladder: "Réglages",
-    kind: "stat",
-    branch: "perce",
-    label: "Précision",
-    glyph: "·",
-    description: "Chance qu'un passage perce",
-    requires: ["perce"],
-    basePrice: 3,
-    priceStep: 0.2,
-    valueAt: (p) => Math.min(0.9, 0.05 + p * TICK),
-    format: pct,
-  },
-  {
-    id: "pointe",
-    ladder: "Réglages",
-    kind: "stat",
-    branch: "perce",
-    label: "Pointe",
-    glyph: "⇥",
-    description: "Cellules étrangères traversées",
-    requires: ["perce"],
-    basePrice: 8,
-    priceStep: 1.6,
-    valueAt: (p) => 1 + p,
-    format: (value) => `${value} cellules`,
-  },
-  {
-    id: "explosion",
-    ladder: "Capacité",
-    kind: "unlock",
-    branch: "explosion",
-    label: "Explosion",
-    glyph: "✳",
-    description: "Un pixel détruit peut emporter ses voisins de la même couleur.",
-    basePrice: 140,
-    priceStep: 0,
-    maxLevel: 1,
-    valueAt: (p) => p,
-    format: (v) => (v > 0 ? "débloqué" : "verrouillé"),
-  },
-  {
-    id: "explosionProc",
-    ladder: "Réglages",
-    kind: "stat",
-    branch: "explosion",
-    label: "Amorce",
-    glyph: "·",
-    description: "Chance qu'un pixel détruit explose",
-    requires: ["explosion"],
-    basePrice: 3,
-    priceStep: 0.2,
-    valueAt: (p) => Math.min(0.9, 0.05 + p * TICK),
-    format: pct,
-  },
-  {
-    id: "souffle",
-    ladder: "Réglages",
-    kind: "stat",
-    branch: "explosion",
-    label: "Souffle",
-    glyph: "◎",
-    description: "Rayon de l'explosion",
-    requires: ["explosion"],
-    basePrice: 10,
-    priceStep: 2.4,
-    valueAt: (p) => 1 + p,
-    format: (value) => `${value} blocs`,
-  },
-  {
-    id: "foudre",
-    ladder: "Capacité",
-    kind: "unlock",
-    branch: "foudre",
-    label: "Foudre",
-    glyph: "⚡",
-    description: "Un arc saute du pixel abattu vers un voisin de sa couleur, et continue.",
-    basePrice: 180,
-    priceStep: 0,
-    maxLevel: 1,
-    valueAt: (p) => p,
-    format: (v) => (v > 0 ? "débloqué" : "verrouillé"),
-  },
-  {
-    id: "foudreProc",
-    ladder: "Réglages",
-    kind: "stat",
-    branch: "foudre",
-    label: "Charge",
-    glyph: "·",
-    description: "Chance qu'un arc parte",
-    requires: ["foudre"],
-    basePrice: 3,
-    priceStep: 0.2,
-    valueAt: (p) => Math.min(0.9, 0.05 + p * TICK),
-    format: pct,
-  },
-  {
-    id: "chaine",
-    ladder: "Réglages",
-    kind: "stat",
-    branch: "foudre",
-    label: "Rebond",
-    glyph: "⌇",
-    description: "Sauts successifs de l'arc",
-    requires: ["foudre"],
-    basePrice: 6,
-    priceStep: 1.1,
-    valueAt: (p) => 2 + p,
-    format: (value) => `${value} sauts`,
-  },
-  {
-    id: "feu",
-    ladder: "Capacité",
-    kind: "unlock",
-    branch: "feu",
-    label: "Feu",
-    glyph: "▲",
-    description:
-      "L'incendie se propage de proche en proche dans la couleur touchée, en suivant sa forme.",
-    basePrice: 240,
-    priceStep: 0,
-    maxLevel: 1,
-    valueAt: (p) => p,
-    format: (v) => (v > 0 ? "débloqué" : "verrouillé"),
-  },
-  {
-    id: "feuProc",
-    ladder: "Réglages",
-    kind: "stat",
-    branch: "feu",
-    label: "Braise",
-    glyph: "·",
-    description: "Chance qu'un incendie parte",
-    requires: ["feu"],
-    basePrice: 4,
-    priceStep: 0.24,
-    valueAt: (p) => Math.min(0.9, 0.04 + p * TICK),
-    format: pct,
-  },
-  {
-    id: "brasier",
-    ladder: "Réglages",
-    kind: "stat",
-    branch: "feu",
-    label: "Brasier",
-    glyph: "≋",
-    description: "Cellules que l'incendie parcourt",
-    requires: ["feu"],
-    basePrice: 8,
-    priceStep: 0.9,
-    valueAt: (p) => 4 + p * 2,
-    format: (value) => `${value} cellules`,
-  },
-
   // --- Confort ----------------------------------------------------------
   {
     id: "nuancier",
@@ -448,35 +249,6 @@ export const META_UPGRADES: MetaUpgradeDefinition[] = [
     glyph: "▤",
     description: "Filtrer les cases proposées sur une seule couleur.",
     basePrice: 70,
-    priceStep: 0,
-    maxLevel: 1,
-    valueAt: (p) => p,
-    format: (v) => (v > 0 ? "débloqué" : "verrouillé"),
-  },
-  {
-    id: "auto",
-    ladder: "Étal",
-    kind: "unlock",
-    branch: "confort",
-    label: "Automate",
-    glyph: "⟳",
-    description: "Les cases partent toutes seules dès qu'un emplacement se libère.",
-    basePrice: 110,
-    priceStep: 0,
-    maxLevel: 1,
-    valueAt: (p) => p,
-    format: (v) => (v > 0 ? "débloqué" : "verrouillé"),
-  },
-  {
-    id: "emplette",
-    ladder: "Étal",
-    kind: "unlock",
-    branch: "confort",
-    label: "Emplette",
-    glyph: "◈⟳",
-    description: "Achète toute seule l'amélioration la moins chère dès qu'elle est payable.",
-    requires: ["auto"],
-    basePrice: 200,
     priceStep: 0,
     maxLevel: 1,
     valueAt: (p) => p,
@@ -563,18 +335,6 @@ export function rewardForClear(input: ClearInput): ClearReward {
   };
 }
 
-/** The capabilities a cannon has, and how far each one reaches. */
-export interface EffectBonus {
-  pierceChance: number;
-  pierceDepth: number;
-  explosionChance: number;
-  explosionRadius: number;
-  lightningChance: number;
-  lightningArcs: number;
-  fireChance: number;
-  fireSpread: number;
-}
-
 /** What the profile hands to every level it starts. */
 export interface PermanentBonus {
   startingFragments: number;
@@ -591,23 +351,9 @@ export interface PermanentBonus {
    * that was cleared. Mémoire is the bought exception to axes being per-image.
    */
   carriedLevels: UpgradeLevels;
-  effects: EffectBonus;
   canFilterQueue: boolean;
-  canAutoLaunch: boolean;
-  canAutoBuy: boolean;
   canSeePalette: boolean;
 }
-
-export const NO_EFFECT_BONUS: EffectBonus = {
-  pierceChance: 0,
-  pierceDepth: 0,
-  explosionChance: 0,
-  explosionRadius: 0,
-  lightningChance: 0,
-  lightningArcs: 0,
-  fireChance: 0,
-  fireSpread: 0,
-};
 
 export const NO_PERMANENT_BONUS: PermanentBonus = {
   startingFragments: 0,
@@ -619,10 +365,7 @@ export const NO_PERMANENT_BONUS: PermanentBonus = {
   shardMultiplier: 1,
   priceMultiplier: 1,
   carriedLevels: {},
-  effects: NO_EFFECT_BONUS,
   canFilterQueue: false,
-  canAutoLaunch: false,
-  canAutoBuy: false,
   canSeePalette: false,
 };
 
@@ -790,13 +533,6 @@ export class MetaProgression {
       }
     }
 
-    // A branch's numbers only exist once its capability has been bought: an
-    // unbought Explosion leaves the radius bought under it inert rather than
-    // firing at a chance of zero, which would be the same thing said less
-    // clearly.
-    const branch = (unlock: MetaUpgradeId, id: MetaUpgradeId): number =>
-      this.levelOf(unlock) > 0 ? this.valueOf(id) : 0;
-
     // The library pays passively for work already finished: it multiplies what
     // an image is worth and what an absence produces, and touches nothing else.
     const book = this.library.bonus();
@@ -811,19 +547,7 @@ export class MetaProgression {
       shardMultiplier: this.valueOf("prospecteur"),
       priceMultiplier: this.valueOf("negoce"),
       carriedLevels,
-      effects: {
-        pierceChance: branch("perce", "perceProc"),
-        pierceDepth: branch("perce", "pointe"),
-        explosionChance: branch("explosion", "explosionProc"),
-        explosionRadius: branch("explosion", "souffle"),
-        lightningChance: branch("foudre", "foudreProc"),
-        lightningArcs: branch("foudre", "chaine"),
-        fireChance: branch("feu", "feuProc"),
-        fireSpread: branch("feu", "brasier"),
-      },
       canFilterQueue: this.levelOf("filtre") > 0,
-      canAutoLaunch: this.levelOf("auto") > 0,
-      canAutoBuy: this.levelOf("emplette") > 0,
       canSeePalette: this.levelOf("nuancier") > 0,
     };
   }

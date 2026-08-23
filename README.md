@@ -462,20 +462,47 @@ de vert, le bleu qui court dessus, et un trou se voit comme un trou. La pastille
 montre le **spécimen tel qu'il était sur le plateau**, pas la valeur de grille
 sous laquelle il a été classé.
 
-### Le confort se gagne
+### Ce qui s'achète où
 
-| Nœud | Prix | Ce qu'il retire de pénible |
-|---|---:|---|
-| Nuancier | 40 ◆ | la palette entière, avec les couleurs encore atteignables mises en évidence |
-| Trieuse | 70 ◆ | filtrer les cases proposées sur une seule couleur |
-| Automate | 110 ◆ | les cases partent toutes seules dès qu'un emplacement se libère |
-| Emplette | 200 ◆ | achète l'amélioration la moins chère dès qu'elle est payable |
+La ligne de partage : **ce qui agit à l'intérieur d'une partie s'achète en
+fragments, dans la boutique de la toile, et se rejoue à chaque image. Ce qui la
+précède, la finance ou lui survit reste en éclats, dans l'arbre permanent.**
 
-Aucun n'est donné : ils ne veulent dire quelque chose que pour quelqu'un qui a
-déjà fini une toile et sait ce qui est pénible dans la suivante — chercher la
-couleur goulot parmi huit offres au hasard, cliquer la même case des centaines de
-fois, rouvrir la boutique toutes les trente secondes. Tant qu'ils ne sont pas
-achetés, la rangée n'existe pas et une première passe garde sa forme.
+| Boutique de toile (fragments ◈) | Arbre permanent (éclats ◆) |
+|---|---|
+| Rail, Cases — vitesse, canons, chargeur, étal | Économie — Négoce, Élan, Prospecteur |
+| Économie de partie — Alliage, Veille | Départ — Fondation, Atelier, Héritage, Socle, Mémoire |
+| **Automatisme** — Automate, Cadence, Emplette | Hors-ligne — Somnambule |
+| **Capacités** — Perce, Explosion, Foudre, Feu et leurs réglages | Confort — Nuancier, Trieuse |
+
+**Pourquoi les capacités et l'automate ont changé de côté.** Ils étaient des
+nœuds permanents, et le relevé a montré ce que ça produisait : l'Automate tombait
+à la sixième toile après **7,4 heures de jeu**, et la toile suivante passait de
+57,8 minutes à **6,8**. Toute la difficulté du jeu tenait dans un seul achat —
+avant lui, un jeu d'attente qui n'attend pas, où il faut taper une case par
+seconde pendant une heure ; après lui, plus rien à décider. Une capacité qu'un
+profil possède pour de bon a cessé d'être une décision.
+
+Achetées dans la toile, elles se rejouent : chaque image recommence à la main et
+s'automatise à mesure qu'elle paie. C'est l'arc que le jeu voulait, et c'est ce
+que « roguelite » veut dire ici.
+
+**L'Automate et son délai.** Débloqué, il envoie une case toutes les **8 s** —
+assez pour qu'un pouce fasse encore mieux, assez peu pour qu'un téléphone posé
+sur la table serve enfin à quelque chose. Chaque niveau de **Cadence** en retire
+15 %, jusqu'à un plancher de 0,25 s : en dessous, « de temps en temps » est
+devenu « à chaque frame » et ce n'est plus un délai.
+
+**Les quatre capacités sont des portes.** Perce 6 000 ◈, Explosion 15 000,
+Foudre 30 000, Feu 60 000 — une échelle qui traverse une toile. Derrière chacune,
+deux réglages : une chance de déclenchement sans plafond utile, et une portée
+(cases traversées, rayon, rebonds, propagation). Un réglage acheté derrière une
+porte fermée reste **inerte** plutôt que de tirer à zéro pour cent, ce qui serait
+la même chose dite moins clairement.
+
+Les nœuds de confort qui restent permanents — Nuancier, Trieuse — ne changent pas
+ce que fait un canon : ils changent ce que le joueur voit et peut filtrer. Les
+racheter à chaque image serait une punition, pas une décision.
 
 **Le nuancier explique le problème central du jeu.** Une couleur peut être
 vivante et inatteignable : enterrée derrière une autre de tous les côtés, elle

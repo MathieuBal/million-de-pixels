@@ -162,10 +162,14 @@ try {
 
   await page.locator("#pause").click();
   await page.waitForSelector("#upgrade-panel:not([hidden])", { timeout: 10000 });
-  // In game the shop shows one family at a time: two axes on screen, not
-  // twelve. The capabilities and their numbers live in the between-toiles tree.
+  // In game the shop shows one family at a time, so a phone never has to hold
+  // twenty-three axes at once — which is what it now has, since the automaton
+  // and the four capabilities are bought here rather than in the profile.
   check("la boutique montre une famille a la fois", (await page.locator(".upgrade-row").count()) === 3);
-  check("les trois familles sont accessibles", (await page.locator(".sub-tab").count()) === 3);
+  // Five families now: the automaton and the four capabilities are bought here,
+  // with the fragments the image pays out, and re-bought on the next image.
+  const families = await page.locator(".sub-tab").allInnerTexts();
+  check("les cinq familles sont accessibles", families.length === 5, families.join(" · "));
   await page.locator('.sub-tab[data-id="economie"]').click();
   check(
     "changer de famille change les axes",
@@ -174,26 +178,42 @@ try {
   check("chaque axe montre sa progression", (await page.locator(".upgrade-row .track").count()) === 2);
   await page.locator('.sub-tab[data-id="rail"]').click();
 
-  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
-  check("l'arbre s'ouvre par branches", (await page.locator(".sub-tab").count()) === 6);
-  await page.locator('.sub-tab[data-id="explosion"]').click();
-  // A locked node is listed, not hidden: the door says what to want, and the
-  // rows behind it say the door leads somewhere. They keep their name to
-  // themselves until it is opened.
-  check(
-    "la branche montre sa porte et ses reglages",
-    (await page.locator(".upgrade-row").count()) === 3,
-  );
+  // The capabilities are bought inside the toile now, so its shop is where the
+  // doors are. A locked axis is listed, not hidden: the door says what to want,
+  // and the rows behind it say the door leads somewhere.
+  await page.locator('.sub-tab[data-id="capacites"]').click();
+  const capRows = await page.locator(".upgrade-row").count();
+  check("les capacites s'achetent dans la toile", capRows === 12, `${capRows} axes`);
   const locked = page.locator('.upgrade-row[data-state="locked"]');
-  check("les reglages sont verrouilles", (await locked.count()) === 2);
-  check("un reglage verrouille n'a pas de prix", (await locked.first().locator(".price").innerText()) === "—");
+  check("leurs reglages sont verrouilles", (await locked.count()) === 8, `${await locked.count()} verrouilles`);
   check(
-    "il dit ce qui manque",
-    (await locked.first().locator(".meta").innerText()).includes("requis"),
+    "un reglage verrouille ne s'achete pas",
+    await locked.first().locator(".price").isDisabled(),
+  );
+  check(
+    "il dit derriere quelle porte il est",
+    (await locked.first().locator(".meta").innerText()).includes("demande"),
     await locked.first().locator(".meta").innerText(),
   );
-  await page.locator('.sub-tab[data-id="racine"]').click();
+
+  // The automaton too, with the delay it starts at.
+  await page.locator('.sub-tab[data-id="automatisme"]').click();
+  check(
+    "l'automate est un achat de la toile",
+    (await page.locator('.upgrade-row:has-text("Automate")').count()) === 1,
+  );
+  const cadence = page.locator('.upgrade-row:has-text("Cadence")').first();
+  check(
+    "sa cadence attend qu'il existe",
+    (await cadence.getAttribute("data-state")) === "locked",
+    await cadence.locator(".meta").innerText(),
+  );
+
+  await page.locator('#upgrade-tabs button[data-tab="permanent"]').click();
+  const branches = await page.locator(".sub-tab").allInnerTexts();
+  check("l'arbre garde l'economie et le depart", branches.length === 2, branches.join(" · "));
   await page.locator('#upgrade-tabs button[data-tab="level"]').click();
+  await page.locator('.sub-tab[data-id="rail"]').click();
 
   const balanceBefore = digits(await page.locator("#upgrade-balance").innerText());
   check("les pixels detruits financent les achats", balanceBefore > 0, `${balanceBefore} fragments`);
