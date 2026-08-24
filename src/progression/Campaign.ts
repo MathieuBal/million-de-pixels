@@ -838,15 +838,79 @@ export const CAMPAIGN: CampaignImage[] = [
   },
 ];
 
-/** Les images de campagne, de la plus douce à la plus rude. */
+/**
+ * Ce qui rend *cette* toile-ci difficile — pas à quel point, mais en quoi.
+ *
+ * Trois images peuvent partager une note et ne rien avoir en commun à jouer :
+ * seize couleurs franches se décapent, huit couleurs dont six enterrées se
+ * déterrent. C'est la distinction qu'une note scalaire écrase.
+ */
+export type CampaignCharacter = "palette" | "rares" | "enterrees";
+
+export function characterOf(image: CampaignImage): CampaignCharacter {
+  const d = image.difficulty;
+  if (!d) return "palette";
+  // Les mêmes poids que la note : le caractère est le terme qui pèse le plus.
+  const palette = (Math.min(1, Math.max(0, d.paletteSize - 4) / 14)) * 0.35;
+  const rares = Math.min(1, d.rareColors / 8) * 0.25;
+  const buried = Math.min(1, d.buriedAtStart / 5) * 0.4;
+  if (buried >= palette && buried >= rares) return "enterrees";
+  return rares > palette ? "rares" : "palette";
+}
+
+/** Combien une toile pèse, pour départager à caractère égal. */
+function weight(image: CampaignImage): number {
+  const d = image.difficulty;
+  if (!d) return Number.POSITIVE_INFINITY;
+  return d.rating * 1000 + d.buriedAtStart * 10 + d.rareColors + d.paletteSize / 100;
+}
+
+/**
+ * L'ordre de la campagne : une pente qui monte, mais qui change de sujet.
+ *
+ * Trier sur la seule note produisait douze premières toiles interchangeables —
+ * cinq à huit couleurs, aucune enterrée, aucune différence perceptible d'une
+ * partie à l'autre. Et « aucune enterrée » n'est pas un détail : à palette et
+ * surface identiques, un plateau où sept couleurs sur huit sont enterrées se
+ * finit en 40,7 minutes contre 9,9 — quatre fois plus long. Le joueur qui
+ * ouvrait la campagne rencontrait donc douze fois le même exercice avant de
+ * voir le facteur qui compte le plus.
+ *
+ * L'ordre alterne donc les caractères. À chaque pas on prend la toile la plus
+ * douce dont le caractère diffère de la précédente, en s'autorisant à monter
+ * d'un cran de note — pas plus, sinon ce n'est plus une pente. Une toile de
+ * note 2 avec une couleur enterrée arrive ainsi en deuxième ou troisième
+ * position, et le déterrage s'apprend pendant qu'il est encore doux.
+ */
 export function campaignByDifficulty(): CampaignImage[] {
-  return [...CAMPAIGN].sort((a, b) => {
-    // Une image non encore mesurée passe en fin de liste plutôt que de
-    // s'insérer à une place qu'on lui aurait supposée.
-    const left = a.difficulty?.rating ?? Number.POSITIVE_INFINITY;
-    const right = b.difficulty?.rating ?? Number.POSITIVE_INFINITY;
-    return left - right;
-  });
+  // Les non mesurées passent en fin plutôt qu'à une place supposée.
+  const pool = [...CAMPAIGN].sort((a, b) => weight(a) - weight(b));
+  const out: CampaignImage[] = [];
+  const seen = new Set<CampaignCharacter>();
+  let previous: CampaignCharacter | null = null;
+
+  while (pool.length > 0) {
+    const floor = pool[0].difficulty?.rating ?? Number.POSITIVE_INFINITY;
+    // La fenêtre : la note du moment, et un cran au-dessus. Elle borne la
+    // variété pour qu'alterner ne devienne jamais un saut de difficulté.
+    const window = pool.filter((image) => (image.difficulty?.rating ?? Infinity) <= floor + 1);
+
+    // Un caractère encore jamais rencontré passe avant un caractère simplement
+    // différent : les trois façons dont une toile résiste doivent être vues
+    // tant qu'elles sont douces, et le déterrage — celui qui coûte quatre fois
+    // le temps d'une partie — est le dernier qu'on peut se permettre de
+    // découvrir tard.
+    const fresh = window.find((image) => !seen.has(characterOf(image)));
+    const different = window.find((image) => characterOf(image) !== previous);
+    const chosen = fresh ?? different ?? pool[0];
+
+    out.push(chosen);
+    previous = characterOf(chosen);
+    seen.add(previous);
+    pool.splice(pool.indexOf(chosen), 1);
+  }
+
+  return out;
 }
 
 /**
